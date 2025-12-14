@@ -3,54 +3,24 @@ Feature extraction module for battery cycle life prediction
 """
 import numpy as np
 import pandas as pd
-from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Any
+from sklearn.preprocessing import StandardScaler
 from config import Config
 
-
-class BaseFeatureExtractor(ABC):
-    """Abstract base class for feature extractors"""
-    
-    def __init__(self, config: Config = None):
-        """Initialize feature extractor with configuration
-        
-        Args:
-            config: Configuration object containing feature extraction parameters
-        """
-        self.config = config if config else Config()
-    
-    @abstractmethod
-    def extract_features(self, battery_data: Dict[str, Any]) -> Tuple[pd.DataFrame, np.ndarray]:
-        """Extract features from battery data
-        
-        Args:
-            battery_data: Dictionary containing battery measurement data
-            
-        Returns:
-            Tuple of (feature_dataframe, target_array)
-        """
-        pass
-    
-    @abstractmethod
-    def get_feature_names(self) -> list:
-        """Get names of extracted features
-        
-        Returns:
-            List of feature names
-        """
-        pass
-
-
-class StandardFeatureExtractor(BaseFeatureExtractor):
+class StandardFeatureExtractor():
     """Standard feature extractor based on the original research paper"""
     
-    def __init__(self, config: Config = None):
+    def __init__(self, config: Config = None, normalize: bool = False):
         """Initialize standard feature extractor
         
         Args:
             config: Configuration object containing feature extraction parameters
+            normalize: Whether to apply standardization (z-score normalization)
         """
-        super().__init__(config)
+        self.config = config if config else Config()
+        self.normalize = normalize
+        self.scaler = StandardScaler() if normalize else None
+        self.is_fitted = False
         self.feature_names = [
             'DeltaQ_var', 'DeltaQ_min', 'CapFadeCycle2Slope', 
             'CapFadeCycle2Intercept', 'Qd2', 'AvgChargeTime',
@@ -144,6 +114,19 @@ class StandardFeatureExtractor(BaseFeatureExtractor):
         
         X = pd.DataFrame(feature_dict)
         
+        # Apply standardization if enabled
+        if self.normalize:
+            if not self.is_fitted:
+                # Fit and transform on training data
+                X_normalized = self.scaler.fit_transform(X)
+                self.is_fitted = True
+            else:
+                # Only transform on validation/test data
+                X_normalized = self.scaler.transform(X)
+            
+            # Convert back to DataFrame with feature names
+            X = pd.DataFrame(X_normalized, columns=X.columns, index=X.index)
+        
         return X, y
     
     def get_feature_names(self) -> list:
@@ -172,43 +155,3 @@ class StandardFeatureExtractor(BaseFeatureExtractor):
         features['cycle_life'] = y[0]
         
         return features
-
-
-class FeatureExtractorFactory:
-    """Factory class for creating feature extractors"""
-    
-    _extractors = {
-        'standard': StandardFeatureExtractor,
-        # Future extractors can be added here
-        # 'advanced': AdvancedFeatureExtractor,
-        # 'deep_learning': DeepLearningFeatureExtractor,
-    }
-    
-    @classmethod
-    def create_extractor(cls, extractor_type: str, config: Config = None) -> BaseFeatureExtractor:
-        """Create a feature extractor of specified type
-        
-        Args:
-            extractor_type: Type of feature extractor ('standard', etc.)
-            config: Configuration object
-            
-        Returns:
-            Feature extractor instance
-            
-        Raises:
-            ValueError: If extractor_type is not supported
-        """
-        if extractor_type not in cls._extractors:
-            available_types = list(cls._extractors.keys())
-            raise ValueError(f"Unknown extractor type '{extractor_type}'. Available types: {available_types}")
-        
-        return cls._extractors[extractor_type](config)
-    
-    @classmethod
-    def get_available_extractors(cls) -> list:
-        """Get list of available extractor types
-        
-        Returns:
-            List of available extractor type names
-        """
-        return list(cls._extractors.keys())

@@ -6,21 +6,23 @@ import pandas as pd
 from typing import Dict, Any, Tuple
 from sklearn.linear_model import ElasticNetCV
 from sklearn.metrics import mean_squared_error
-from models.base_model import BaseModel
-from config import Config
+from models.base import BaseModel
+from config import Config, ElasticNetConfig
 
 
 class ElasticNetModel(BaseModel):
     """Elastic Net regression model for battery cycle life prediction"""
     
-    def __init__(self, config: Config = None):
+    def __init__(self, config: Config = None, model_config: ElasticNetConfig = None):
         """Initialize Elastic Net model
         
         Args:
-            config: Configuration object containing model parameters
+            config: General configuration object
+            model_config: Elastic Net specific configuration object
         """
-        super().__init__(config)
+        super().__init__(config, model_config)
         self.config = config if config else Config()
+        self.model_config = model_config if model_config else ElasticNetConfig()
         self.best_alpha = None
         self.best_lambda = None
         self.best_coefficients = None
@@ -43,8 +45,8 @@ class ElasticNetModel(BaseModel):
         print("Training Elastic Net model with hyperparameter search...")
         
         # Get hyperparameter ranges
-        alpha_vec = self.config.get_alpha_vec()
-        lambda_vec = self.config.get_lambda_vec()
+        alpha_vec = self.model_config.get_alpha_vec()
+        lambda_vec = self.model_config.get_lambda_vec()
         
         # Store results for all alpha values
         rmse_list = []
@@ -58,8 +60,8 @@ class ElasticNetModel(BaseModel):
             model = ElasticNetCV(
                 l1_ratio=alpha, 
                 alphas=lambda_vec, 
-                cv=self.config.CROSS_VALIDATION_FOLDS,
-                max_iter=self.config.MAX_ITER,
+                cv=self.model_config.CROSS_VALIDATION_FOLDS,
+                max_iter=self.model_config.MAX_ITER,
                 random_state=self.config.RANDOM_STATE
             )
             
@@ -83,7 +85,7 @@ class ElasticNetModel(BaseModel):
         intercept_list = np.array(intercept_list)
         
         # Select top models for validation
-        num_val_models = min(self.config.NUM_VALIDATION_MODELS, len(rmse_list))
+        num_val_models = min(self.model_config.NUM_VALIDATION_MODELS, len(rmse_list))
         best_indices = np.argsort(rmse_list)[:num_val_models]
         
         # Use validation data to select final hyperparameters
@@ -110,8 +112,8 @@ class ElasticNetModel(BaseModel):
         self.model = ElasticNetCV(
             l1_ratio=self.best_alpha,
             alphas=[self.best_lambda],
-            cv=self.config.CROSS_VALIDATION_FOLDS,
-            max_iter=self.config.MAX_ITER,
+            cv=self.model_config.CROSS_VALIDATION_FOLDS,
+            max_iter=self.model_config.MAX_ITER,
             random_state=self.config.RANDOM_STATE
         )
         self.model.fit(X_train, y_train)
