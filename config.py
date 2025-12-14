@@ -30,6 +30,10 @@ class Config:
     NORMALIZE_FEATURES = True  # Apply z-score normalization to features
     LOG_TRANSFORM_TARGET = True  # Apply log10 transformation to target (cycle life)
     
+    # CNN feature extraction
+    CNN_NUM_POINTS_PER_CYCLE = 1000  # Number of points to sample per cycle
+    CNN_FEATURE_NAMES = ['V', 'I', 'T']
+
     # Training parameters
     RANDOM_STATE = 42
 
@@ -152,3 +156,31 @@ class RandomForestConfig:
         'max_samples': uniform(0.6, 0.4),  # uniform(loc, scale) -> 0.6 to 1.0
         'min_impurity_decrease': uniform(0.0, 0.01)  # 剪枝参数
     }
+
+
+class CNNConfig:
+    """Configuration class for CNN-BLSTM deep learning model parameters"""
+    
+    class ModelConfig:
+        """Inner class for model-specific configuration"""
+        # Training parameters
+        batch_size = 16
+        epochs = 200
+        learning_rate = 0.001
+
+        # Network architecture (can be extended)
+        cnn_filters = [32, 64]
+        lstm_hidden_size = 64
+        dropout = 0.5
+    
+    # Parameter loading and saving
+    LOAD_PARAMS = None  # Path to load model weights (e.g., './params/cnn_best.pth')
+    SAVE_PARAMS = './params/cnn_best.pth'  # Path to save model weights
+    
+    # Early stopping
+    EARLY_STOPPING_PATIENCE = 15
+    
+    @classmethod
+    def get_model_config(cls):
+        """Get model configuration object"""
+        return cls.ModelConfig()

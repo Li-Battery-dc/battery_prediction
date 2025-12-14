@@ -28,14 +28,16 @@ class StandardFeatureExtractor():
             'IntegralTemp', 'MinIR', 'IRDiff2And100'
         ]
     
-    def extract_features(self, battery_data: Dict[str, Any]) -> Tuple[pd.DataFrame, np.ndarray]:
+    def extract_features(self, battery_data: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
         """Extract standard features from battery data
         
         Args:
             battery_data: Dictionary containing battery measurement data for multiple cells
             
         Returns:
-            Tuple of (feature_dataframe, cycle_life_array)
+            Tuple of (feature_array, cycle_life_array)
+            - feature_array: shape (N, num_features)
+            - cycle_life_array: shape (N,)
         """
         N = len(battery_data)
         
@@ -100,33 +102,28 @@ class StandardFeatureExtractor():
             MinIR[i] = np.min(valid_IR) if len(valid_IR) > 0 else 0
             IRDiff2And100[i] = IR_2 - IR_100
         
-        # Create feature DataFrame
-        feature_dict = {
-            'DeltaQ_var': DeltaQ_var,
-            'DeltaQ_min': DeltaQ_min,
-            'CapFadeCycle2Slope': CapFadeCycle2Slope,
-            'CapFadeCycle2Intercept': CapFadeCycle2Intercept,
-            'Qd2': Qd2,
-            'AvgChargeTime': AvgChargeTime,
-            'IntegralTemp': IntegralTemp,
-            'MinIR': MinIR,
-            'IRDiff2And100': IRDiff2And100
-        }
-        
-        X = pd.DataFrame(feature_dict)
+        # Stack features into numpy array
+        X = np.column_stack([
+            DeltaQ_var,
+            DeltaQ_min,
+            CapFadeCycle2Slope,
+            CapFadeCycle2Intercept,
+            Qd2,
+            AvgChargeTime,
+            IntegralTemp,
+            MinIR,
+            IRDiff2And100
+        ])  # Shape: (N, 9)
         
         # Apply standardization if enabled
         if self.normalize:
             if not self.is_fitted:
                 # Fit and transform on training data
-                X_normalized = self.scaler.fit_transform(X)
+                X = self.scaler.fit_transform(X)
                 self.is_fitted = True
             else:
                 # Only transform on validation/test data
-                X_normalized = self.scaler.transform(X)
-            
-            # Convert back to DataFrame with feature names
-            X = pd.DataFrame(X_normalized, columns=X.columns, index=X.index)
+                X = self.scaler.transform(X)
         
         # Apply log transformation to target if enabled
         if self.log_transform_target:
@@ -169,7 +166,7 @@ class StandardFeatureExtractor():
         X, y = self.extract_features(temp_batch)
         
         # Convert to dictionary
-        features = X.iloc[0].to_dict()
+        features = {name: X[0, i] for i, name in enumerate(self.feature_names)}
         features['cycle_life'] = y[0]
         
         return features

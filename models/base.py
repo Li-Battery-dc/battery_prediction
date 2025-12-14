@@ -29,14 +29,14 @@ class BaseModel(ABC):
         self.result_dir = None  # Will be set when saving results
         
     @abstractmethod
-    def fit(self, X_train: pd.DataFrame, y_train: np.ndarray, 
-            X_val: pd.DataFrame = None, y_val: np.ndarray = None) -> Dict[str, Any]:
+    def fit(self, X_train: np.ndarray, y_train: np.ndarray, 
+            X_val: np.ndarray = None, y_val: np.ndarray = None) -> Dict[str, Any]:
         """Train the model
         
         Args:
-            X_train: Training features
+            X_train: Training features (numpy array)
             y_train: Training targets
-            X_val: Validation features (optional)
+            X_val: Validation features (optional, numpy array)
             y_val: Validation targets (optional)
             
         Returns:
@@ -45,22 +45,22 @@ class BaseModel(ABC):
         pass
     
     @abstractmethod
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions
         
         Args:
-            X: Feature data
+            X: Feature data (numpy array)
             
         Returns:
             Predicted values
         """
         pass
     
-    def evaluate(self, X: pd.DataFrame, y: np.ndarray, feature_extractor=None) -> Dict[str, float]:
+    def evaluate(self, X: np.ndarray, y: np.ndarray, feature_extractor=None) -> Dict[str, float]:
         """Evaluate model performance
         
         Args:
-            X: Feature data
+            X: Feature data (numpy array)
             y: True target values (may be transformed, e.g., log scale)
             feature_extractor: Optional feature extractor for inverse transforming predictions and targets
             
@@ -71,6 +71,7 @@ class BaseModel(ABC):
         
         # Apply inverse transformation if feature extractor is provided
         if feature_extractor is not None and feature_extractor.log_transform_target:
+            print("   - Inverse transforming predictions and targets to original scale for evaluation")
             y_pred = feature_extractor.inverse_transform_target(y_pred)
             y = feature_extractor.inverse_transform_target(y)
         

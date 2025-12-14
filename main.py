@@ -5,18 +5,24 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig
+from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig, CNNConfig
 from data_preprocess.data_loader import BatteryDataLoader
 
 from feature_extraction.standard import StandardFeatureExtractor
-from feature_extraction.extended import ExtendedFeatureExtractor
+from feature_extraction.cnn_feature import CNNFeatureExtractor
 
 from models.elastic_net import ElasticNetModel
 from models.xgb import XGBoostModel
 from models.rf import RandomForestModel
+from models.CNN import CNNModel
 
+def load_data(config):
+    print("\n1. Loading and preparing data...")
+    data_loader = BatteryDataLoader(config)
+    train_data, val_data, test_data = data_loader.split_data()
+    return train_data, val_data, test_data
 
-def load_and_extract_features(config):
+def extract_features(config):
     """Load data and extract features
     
     Args:
@@ -24,11 +30,7 @@ def load_and_extract_features(config):
     Returns:
         tuple: (X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor, train_data, val_data, test_data)
     """
-    # Step 1: Load and prepare data
-    print("\n1. Loading and preparing data...")
-    data_loader = BatteryDataLoader(config)
-    train_data, val_data, test_data = data_loader.split_data()
-    
+    train_data, val_data, test_data = load_data(config)
     # Step 2: Extract features
     print("\n2. Extracting features...")
     feature_extractor = StandardFeatureExtractor(config)
@@ -64,7 +66,7 @@ def run_elasticnet():
     
     # Load data and extract features
     X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor = \
-        load_and_extract_features(config)
+        extract_features(config)
     
     feature_names = feature_extractor.get_feature_names()
     
@@ -112,7 +114,7 @@ def run_xgboost():
     
     # Load data and extract features
     X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor= \
-        load_and_extract_features(config)
+        extract_features(config)
     
     feature_names = feature_extractor.get_feature_names()
     
@@ -159,7 +161,7 @@ def run_rf():
     
     # Load data and extract features
     X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor= \
-        load_and_extract_features(config)
+        extract_features(config)
     
     feature_names = feature_extractor.get_feature_names()
     
@@ -190,6 +192,65 @@ def run_rf():
     y_test_original = feature_extractor.inverse_transform_target(y_test)
     model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
 
+def run_CNN():
+    """Train and evaluate CNN-BLSTM model for battery cycle life prediction"""
+    
+    print("=" * 60)
+    print("CNN-BLSTM Deep Learning Model")
+    print("=" * 60)
+    
+    # Initialize configurations
+    config = Config()
+    model_config = CNNConfig()
+    
+    train_data, val_data, test_data = load_data(config)
+    
+    # Step 2: Extract raw time-series features using CNN feature extractor
+    print(f"\n2. Extracting raw time-series features for CNN...")
+    
+    feature_extractor = CNNFeatureExtractor(config)
+    
+    X_train, y_train = feature_extractor.extract_features(train_data)
+    X_val, y_val = feature_extractor.extract_features(val_data)
+    X_test, y_test = feature_extractor.extract_features(test_data)
+    
+    print(f"   - Feature extractor: {feature_extractor.__class__.__name__}")
+    if config.NORMALIZE_FEATURES:
+        print(f"   - Applied standardization to time-series data")
+    if config.LOG_TRANSFORM_TARGET:
+        print(f"   - Applied log10 transformation to target variable")
+    print(f"   - Training set: {len(X_train)} samples")
+    print(f"   - Validation set: {len(X_val)} samples")
+    print(f"   - Test set: {len(X_test)} samples")
+    
+    # Step 3: Train model
+    print("\n3. Training CNN-BLSTM model...")
+    model = CNNModel(config, model_config)
+    training_info = model.fit(X_train, y_train, X_val, y_val)
+    
+    print(f"   - Training completed")
+    print(f"   - Final training loss: {training_info['train_loss'][-1]:.4f}")
+    if 'val_loss' in training_info and len(training_info['val_loss']) > 0:
+        print(f"   - Final validation loss: {training_info['val_loss'][-1]:.4f}")
+    
+    # Step 4: Evaluate on train and test sets
+    print("\n4. Evaluating on train and test sets...")
+    train_metrics = model.evaluate(X_train, y_train, feature_extractor)
+    test_metrics = model.evaluate(X_test, y_test, feature_extractor)
+    
+    print(f"   - Train MSE: {train_metrics['mse']:.4f}")
+    print(f"   - Train MPE: {train_metrics['mpe']:.2f}%")
+    print(f"   - Train R²: {train_metrics['r2']:.4f}")
+    print(f"   - Test MSE: {test_metrics['mse']:.4f}")
+    print(f"   - Test MPE: {test_metrics['mpe']:.2f}%")
+    print(f"   - Test R²: {test_metrics['r2']:.4f}")
+    
+    # Step 5: Save results and generate visualization
+    print("\n5. Saving results and generating visualizations...")
+    y_pred_test = feature_extractor.inverse_transform_target(model.predict(X_test))
+    y_test_original = feature_extractor.inverse_transform_target(y_test)
+    feature_names = feature_extractor.get_feature_names()
+    model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
 
 def main():
     """Main function with command-line argument parsing"""
@@ -201,9 +262,11 @@ Examples:
   python main.py --model elasticnet
   python main.py --model xgboost
   python main.py --model rf
+  python main.py --model cnn
   
 Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAMS if specified,
-      otherwise they will perform hyperparameter search and save to config.SAVE_PARAMS
+      otherwise they will perform hyperparameter search and save to config.SAVE_PARAMS.
+      CNN uses raw time-series features (e.g., Vdlin) instead of engineered features.
         """
     )
     
@@ -211,7 +274,7 @@ Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAM
         '--model',
         type=str,
         default='elasticnet',
-        choices=['elasticnet', 'xgboost', 'rf'],
+        choices=['elasticnet', 'xgboost', 'rf', 'cnn'],
         help='Model type to use for prediction (default: elasticnet)'
     )
     
@@ -230,6 +293,8 @@ Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAM
         run_xgboost()
     elif args.model == 'rf':
         run_rf()
+    elif args.model == 'cnn':
+        run_CNN()
     else:
         print(f"Error: Model '{args.model}' is not yet implemented.")
         return 1

@@ -44,8 +44,8 @@ class RandomForestModel(BaseModel):
         self.model_config = model_config if model_config else RandomForestConfig()
         self.model_params = {}
         
-    def fit(self, X_train: pd.DataFrame, y_train: np.ndarray, 
-            X_val: pd.DataFrame = None, y_val: np.ndarray = None) -> Dict[str, Any]:
+    def fit(self, X_train: np.ndarray, y_train: np.ndarray, 
+            X_val: np.ndarray = None, y_val: np.ndarray = None) -> Dict[str, Any]:
         """Train the Random Forest model with parameter loading or hyperparameter search
         
         Note: y_train and y_val should already be log-transformed if using log transformation.
@@ -151,7 +151,7 @@ class RandomForestModel(BaseModel):
         
         return training_info
     
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions using the trained model
         
         Note: Predictions are returned in the same scale as the training targets.

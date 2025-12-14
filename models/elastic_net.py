@@ -29,14 +29,14 @@ class ElasticNetModel(BaseModel):
         self.best_intercept = None
         self.training_history = []
         
-    def fit(self, X_train: pd.DataFrame, y_train: np.ndarray, 
-            X_val: pd.DataFrame = None, y_val: np.ndarray = None) -> Dict[str, Any]:
+    def fit(self, X_train: np.ndarray, y_train: np.ndarray, 
+            X_val: np.ndarray = None, y_val: np.ndarray = None) -> Dict[str, Any]:
         """Train the Elastic Net model with hyperparameter search
         
         Args:
-            X_train: Training features
+            X_train: Training features (numpy array)
             y_train: Training targets
-            X_val: Validation features
+            X_val: Validation features (numpy array)
             y_val: Validation targets
             
         Returns:
@@ -138,11 +138,11 @@ class ElasticNetModel(BaseModel):
         
         return training_info
     
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions using the trained model
         
         Args:
-            X: Feature data
+            X: Feature data (numpy array)
             
         Returns:
             Predicted cycle life values
