@@ -5,11 +5,50 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from config import Config, ElasticNetConfig, XGBConfig
+from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig
 from data_preprocess.data_loader import BatteryDataLoader
+
 from feature_extraction.standard import StandardFeatureExtractor
+from feature_extraction.extended import ExtendedFeatureExtractor
+
 from models.elastic_net import ElasticNetModel
 from models.xgb import XGBoostModel
+from models.rf import RandomForestModel
+
+
+def load_and_extract_features(config):
+    """Load data and extract features
+    
+    Args:
+        config: Configuration object    
+    Returns:
+        tuple: (X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor, train_data, val_data, test_data)
+    """
+    # Step 1: Load and prepare data
+    print("\n1. Loading and preparing data...")
+    data_loader = BatteryDataLoader(config)
+    train_data, val_data, test_data = data_loader.split_data()
+    
+    # Step 2: Extract features
+    print("\n2. Extracting features...")
+    feature_extractor = StandardFeatureExtractor(config)
+    
+    X_train, y_train = feature_extractor.extract_features(train_data)
+    X_val, y_val = feature_extractor.extract_features(val_data)
+    X_test, y_test = feature_extractor.extract_features(test_data)
+    
+    feature_names = feature_extractor.get_feature_names()
+    print(f"   - Feature extractor: {feature_extractor.__class__.__name__}")
+    print(f"   - Extracted {len(feature_names)} features: {feature_names}")
+    if config.NORMALIZE_FEATURES:
+        print(f"   - Applied standardization (z-score normalization)")
+    if config.LOG_TRANSFORM_TARGET:
+        print(f"   - Applied log10 transformation to target variable")
+    print(f"   - Training set shape: {X_train.shape}")
+    print(f"   - Validation set shape: {X_val.shape}")
+    print(f"   - Test set shape: {X_test.shape}")
+    
+    return X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor
 
 
 def run_elasticnet():
@@ -23,23 +62,11 @@ def run_elasticnet():
     config = Config()
     model_config = ElasticNetConfig()
     
-    # Step 1: Load and prepare data
-    data_loader = BatteryDataLoader(config)
-    train_data, val_data, test_data = data_loader.split_data()
-
-    # Step 2: Extract features
-    print("\n2. Extracting features...")
-    feature_extractor = StandardFeatureExtractor(config)
-    
-    X_train, y_train = feature_extractor.extract_features(train_data)
-    X_val, y_val = feature_extractor.extract_features(val_data)
-    X_test, y_test = feature_extractor.extract_features(test_data)
+    # Load data and extract features
+    X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor = \
+        load_and_extract_features(config)
     
     feature_names = feature_extractor.get_feature_names()
-    print(f"   - Extracted {len(feature_names)} features: {feature_names}")
-    print(f"   - Training set shape: {X_train.shape}")
-    print(f"   - Validation set shape: {X_val.shape}")
-    print(f"   - Test set shape: {X_test.shape}")
     
     # Step 3: Train model
     print("\n3. Training Elastic Net model...")
@@ -52,50 +79,42 @@ def run_elasticnet():
     if 'val_rmse' in training_info:
         print(f"   - Validation RMSE: {training_info['val_rmse']:.4f}")
     
-    # Step 4: Evaluate on test set
-    print("\n4. Evaluating on test set...")
-    test_metrics = model.evaluate(X_test, y_test)
-    y_pred_test = model.predict(X_test)
-    
-    print(f"   - Test RMSE: {test_metrics['rmse']:.4f}")
-    print(f"   - Test MAE: {test_metrics['mae']:.4f}")
-    print(f"   - Test MAPE: {test_metrics['mape']:.2f}%")
+    # Step 4: Evaluate on train and test sets
+    print("\n4. Evaluating on train and test sets...")
+    train_metrics = model.evaluate(X_train, y_train, feature_extractor)
+    test_metrics = model.evaluate(X_test, y_test, feature_extractor)
+
+    print(f"   - Train MSE: {train_metrics['mse']:.4f}")
+    print(f"   - Train MPE: {train_metrics['mpe']:.2f}%")
+    print(f"   - Train R²: {train_metrics['r2']:.4f}")
+    print(f"   - Test MSE: {test_metrics['mse']:.4f}")
+    print(f"   - Test MPE: {test_metrics['mpe']:.2f}%")
     print(f"   - Test R²: {test_metrics['r2']:.4f}")
     
     # Step 5: Save results and generate visualization
+    # 获取原始尺度的预测值和真实值用于可视化
+    y_pred_test = feature_extractor.inverse_transform_target(model.predict(X_test))
+    y_test_original = feature_extractor.inverse_transform_target(y_test)
     print("\n5. Saving results and generating visualization...")
-    model.save_results(test_metrics, training_info, feature_names, y_test, y_pred_test)
+    model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
 
 
 def run_xgboost():
     """Train and evaluate XGBoost model for battery cycle life prediction"""
     
     print("=" * 60)
-    print("Battery Cycle Life Prediction - XGBoost Model")
+    print("XGBoost Model")
     print("=" * 60)
     
     # Initialize configurations
     config = Config()
     model_config = XGBConfig()
     
-    # Step 1: Load and prepare data
-    data_loader = BatteryDataLoader(config)
-    train_data, val_data, test_data = data_loader.split_data()
-    
-    # Step 2: Extract features (with standardization for XGBoost)
-    print("\n2. Extracting features...")
-    feature_extractor = StandardFeatureExtractor(config, normalize=True)
-    
-    X_train, y_train = feature_extractor.extract_features(train_data)
-    X_val, y_val = feature_extractor.extract_features(val_data)
-    X_test, y_test = feature_extractor.extract_features(test_data)
+    # Load data and extract features
+    X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor= \
+        load_and_extract_features(config)
     
     feature_names = feature_extractor.get_feature_names()
-    print(f"   - Extracted {len(feature_names)} features: {feature_names}")
-    print(f"   - Applied standardization (z-score normalization)")
-    print(f"   - Training set shape: {X_train.shape}")
-    print(f"   - Validation set shape: {X_val.shape}")
-    print(f"   - Test set shape: {X_test.shape}")
     
     # Step 3: Train model (auto load params or perform search)
     print("\n3. Training XGBoost model...")
@@ -106,19 +125,70 @@ def run_xgboost():
     if 'best_iteration' in training_info:
         print(f"   - Best iteration: {training_info['best_iteration']}")
     
-    # Step 4: Evaluate on test set
-    print("\n4. Evaluating on test set...")
-    test_metrics = model.evaluate(X_test, y_test)
-    y_pred_test = model.predict(X_test)
+    # Step 4: Evaluate on train and test sets
+    print("\n4. Evaluating on train and test sets...")
+    # evaluate方法内部会自动进行逆转换
+    train_metrics = model.evaluate(X_train, y_train, feature_extractor)
+    test_metrics = model.evaluate(X_test, y_test, feature_extractor)
     
-    print(f"   - Test RMSE: {test_metrics['rmse']:.4f}")
-    print(f"   - Test MAE: {test_metrics['mae']:.4f}")
-    print(f"   - Test MAPE: {test_metrics['mape']:.2f}%")
+    print(f"   - Train MSE: {train_metrics['mse']:.4f}")
+    print(f"   - Train MPE: {train_metrics['mpe']:.2f}%")
+    print(f"   - Train R²: {train_metrics['r2']:.4f}")
+    print(f"   - Test MSE: {test_metrics['mse']:.4f}")
+    print(f"   - Test MPE: {test_metrics['mpe']:.2f}%")
     print(f"   - Test R²: {test_metrics['r2']:.4f}")
     
     # Step 5: Save results and generate visualization
     print("\n5. Saving results and generating visualizations...")
-    model.save_results(test_metrics, training_info, feature_names, y_test, y_pred_test)
+    # 获取原始尺度的预测值和真实值用于可视化
+    y_pred_test = feature_extractor.inverse_transform_target(model.predict(X_test))
+    y_test_original = feature_extractor.inverse_transform_target(y_test)
+    model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
+
+
+def run_rf():
+    """Train and evaluate Random Forest model for battery cycle life prediction"""
+    
+    print("=" * 60)
+    print("Random Forest Model")
+    print("=" * 60)
+    
+    # Initialize configurations
+    config = Config()
+    model_config = RandomForestConfig()
+    
+    # Load data and extract features
+    X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor= \
+        load_and_extract_features(config)
+    
+    feature_names = feature_extractor.get_feature_names()
+    
+    # Step 3: Train model (auto load params or perform search)
+    print("\n3. Training Random Forest model...")
+    model = RandomForestModel(config, model_config)
+    training_info = model.fit(X_train, y_train, X_val, y_val)
+    
+    print(f"   - Model trained with {training_info.get('n_estimators', 'N/A')} trees")
+    
+    # Step 4: Evaluate on train and test sets
+    print("\n4. Evaluating on train and test sets...")
+    # evaluate方法内部会自动进行逆转换
+    train_metrics = model.evaluate(X_train, y_train, feature_extractor)
+    test_metrics = model.evaluate(X_test, y_test, feature_extractor)
+    
+    print(f"   - Train MSE: {train_metrics['mse']:.4f}")
+    print(f"   - Train MPE: {train_metrics['mpe']:.2f}%")
+    print(f"   - Train R²: {train_metrics['r2']:.4f}")
+    print(f"   - Test MSE: {test_metrics['mse']:.4f}")
+    print(f"   - Test MPE: {test_metrics['mpe']:.2f}%")
+    print(f"   - Test R²: {test_metrics['r2']:.4f}")
+    
+    # Step 5: Save results and generate visualization
+    print("\n5. Saving results and generating visualizations...")
+    # 获取原始尺度的预测值和真实值用于可视化
+    y_pred_test = feature_extractor.inverse_transform_target(model.predict(X_test))
+    y_test_original = feature_extractor.inverse_transform_target(y_test)
+    model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
 
 
 def main():
@@ -130,9 +200,10 @@ def main():
 Examples:
   python main.py --model elasticnet
   python main.py --model xgboost
+  python main.py --model rf
   
-Note: XGBoost will auto-load parameters from config.LOAD_PARAMS if specified,
-      otherwise it will perform hyperparameter search and save to config.SAVE_PARAMS
+Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAMS if specified,
+      otherwise they will perform hyperparameter search and save to config.SAVE_PARAMS
         """
     )
     
@@ -140,7 +211,7 @@ Note: XGBoost will auto-load parameters from config.LOAD_PARAMS if specified,
         '--model',
         type=str,
         default='elasticnet',
-        choices=['elasticnet', 'xgboost'],
+        choices=['elasticnet', 'xgboost', 'rf'],
         help='Model type to use for prediction (default: elasticnet)'
     )
     
@@ -157,6 +228,8 @@ Note: XGBoost will auto-load parameters from config.LOAD_PARAMS if specified,
         run_elasticnet()
     elif args.model == 'xgboost':
         run_xgboost()
+    elif args.model == 'rf':
+        run_rf()
     else:
         print(f"Error: Model '{args.model}' is not yet implemented.")
         return 1

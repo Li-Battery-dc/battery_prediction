@@ -3,6 +3,7 @@ Configuration file for battery cycle life prediction project
 """
 import os
 import numpy as np
+from scipy.stats import randint, uniform, loguniform
 
 
 class Config:
@@ -25,13 +26,16 @@ class Config:
     AVG_CHARGE_CYCLES = 5
     EPSILON = 1e-8  # To avoid log(0)
     
+    # Feature preprocessing options
+    NORMALIZE_FEATURES = True  # Apply z-score normalization to features
+    LOG_TRANSFORM_TARGET = True  # Apply log10 transformation to target (cycle life)
+    
     # Training parameters
     RANDOM_STATE = 42
 
 
 class ElasticNetConfig:
     """Configuration class for Elastic Net model parameters"""
-    
     # Hyperparameter search ranges
     ALPHA_RANGE = (0.01, 1.0, 0.01)  # start, stop, step (L1/L2 ratio)
     LAMBDA_RANGE = (0.01, 1.0, 0.01)  # start, stop, step (regularization strength)
@@ -58,35 +62,93 @@ class XGBConfig:
     """Configuration class for XGBoost model parameters"""
     
     # Parameter loading and saving
-    LOAD_PARAMS = None  # Path to load best parameters JSON file (e.g., './params_best.json')
-    SAVE_PARAMS = './params/params_best.json'  # Path to save best parameters after search
+    LOAD_PARAMS = './params/1214_1926.json'  # Path to load best parameters JSON file (e.g., './params_best.json')
+    SAVE_PARAMS = './params/1214_1926.json'  # Path to save best parameters after search
     
     # Default parameters (used when LOAD_PARAMS is None and no search is performed)
     DEFAULT_PARAMS = {
-        'n_estimators': 200,
-        'max_depth': 3,
-        'learning_rate': 0.05,
-        'subsample': 0.8,
-        'colsample_bytree': 0.8,
-        'reg_alpha': 0.1,
-        'reg_lambda': 0.1
+        "subsample": 0.6,
+        "reg_lambda": 0.1,
+        "reg_alpha": 0.01,
+        "n_estimators": 250,
+        "max_depth": 7,
+        "learning_rate": 0.01,
+        "colsample_bytree": 0.9
     }
     
     # Early stopping
     EARLY_STOPPING_ROUNDS = 20
     
     # Hyperparameter search configuration
-    N_ITER_SEARCH = 100  # RandomizedSearchCV iterations
+    USE_GRID_SEARCH = False  # True: GridSearchCV, False: RandomizedSearchCV
     CV_FOLDS = 5  
     SCORING = 'neg_mean_squared_error'  # Scoring metric for CV
     
-    # Hyperparameter search space for RandomizedSearchCV
+    # -------------------------------------------------------------------------
+    # 1. RandomizedSearchCV (Broad Exploration)
+    # -------------------------------------------------------------------------
+    N_ITER_SEARCH = 10000  # Number of iterations for RandomizedSearchCV
     PARAM_DISTRIBUTIONS = {
-        'n_estimators': [100, 150, 200, 250, 300],
-        'max_depth': [3, 4, 5, 6, 7, 8],
-        'learning_rate': [0.01, 0.03, 0.05, 0.07, 0.1],
-        'subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
-        'colsample_bytree': [0.6, 0.7, 0.8, 0.9, 1.0],
-        'reg_alpha': [0, 0.01, 0.1, 0.5, 1.0],
-        'reg_lambda': [0.1, 0.5, 1.0, 5.0, 10.0]
+        'n_estimators': randint(low=100, high=800),
+        'max_depth': randint(low=2, high=5),
+        'learning_rate': loguniform(0.005, 0.2),
+        'min_child_weight': randint(low=1, high=10),
+        'subsample': uniform(0.60, 0.40), # uniform(loc, scale) -> loc到loc+scale
+        'colsample_bytree': uniform(0.60, 0.40),
+        'reg_alpha': loguniform(0.01, 10.0),
+        'reg_lambda': loguniform(0.1, 100.0),
+        'gamma': uniform(0.0, 1.0)
+    }
+    
+    # -------------------------------------------------------------------------
+    # 2. GridSearchCV (Refined Search)
+    # -------------------------------------------------------------------------
+    # 注意：运行代码时，通常建议根据 RandomSearch 的最优结果动态调整这里的范围
+    # 下面提供的是基于经验的“高概率”微调范围
+    PARAM_GRID = {
+        'n_estimators': [300, 400, 600, 800],
+        'max_depth': [2, 3, 5, 7],              # 极大概率最佳深度是 2 或 3
+        'learning_rate': [0.01, 0.03, 0.05, 0.07],
+        'min_child_weight': [1, 3, 5],
+        'subsample': [0.6, 0.7, 0.8],
+        'colsample_bytree': [0.6, 0.7, 0.8],
+        # 'reg_alpha': [0.01, 0.05 ,0.1],
+        'reg_lambda': [0.05, 0.1, 0.2],
+        # 'gamma': [0, 0.01, 0.02]
+    }
+
+
+class RandomForestConfig:
+    """Configuration class for Random Forest model parameters"""
+    
+    # Parameter loading and saving
+    LOAD_PARAMS = None  # Path to load best parameters JSON file (e.g., './params/rf_best.json')
+    SAVE_PARAMS = './params/rf_best.json'  # Path to save best parameters after search
+    
+    # Default parameters (used when LOAD_PARAMS is None and no search is performed)
+    DEFAULT_PARAMS = {
+        'n_estimators': 200,
+        'max_depth': 10,
+        'min_samples_split': 5,
+        'min_samples_leaf': 2,
+        'max_features': 'sqrt',
+        'bootstrap': True,
+        'max_samples': 0.8
+    }
+    
+    # Hyperparameter search configuration
+    CV_FOLDS = 5
+    SCORING = 'neg_mean_squared_error'  # Scoring metric for CV
+    
+    # RandomizedSearchCV configuration
+    N_ITER_SEARCH = 2000  # Number of iterations for RandomizedSearchCV
+    PARAM_DISTRIBUTIONS = {
+        'n_estimators': randint(low=100, high=500),
+        'max_depth': [2, 4, 6 , 8, None],
+        'min_samples_split': randint(low=1, high=10),
+        'min_samples_leaf': randint(low=1, high=10),
+        'max_features': ['sqrt', 'log2', None, 0.5, 0.7, 0.9],
+        'bootstrap': [True],
+        'max_samples': uniform(0.6, 0.4),  # uniform(loc, scale) -> 0.6 to 1.0
+        'min_impurity_decrease': uniform(0.0, 0.01)  # 剪枝参数
     }

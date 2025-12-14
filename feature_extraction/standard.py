@@ -10,16 +10,17 @@ from config import Config
 class StandardFeatureExtractor():
     """Standard feature extractor based on the original research paper"""
     
-    def __init__(self, config: Config = None, normalize: bool = False):
+    def __init__(self, config: Config = None):
         """Initialize standard feature extractor
         
         Args:
-            config: Configuration object containing feature extraction parameters
-            normalize: Whether to apply standardization (z-score normalization)
+            config: Configuration object containing feature extraction parameters,
+                   including NORMALIZE_FEATURES and LOG_TRANSFORM_TARGET settings
         """
         self.config = config if config else Config()
-        self.normalize = normalize
-        self.scaler = StandardScaler() if normalize else None
+        self.normalize = self.config.NORMALIZE_FEATURES
+        self.log_transform_target = self.config.LOG_TRANSFORM_TARGET
+        self.scaler = StandardScaler() if self.normalize else None
         self.is_fitted = False
         self.feature_names = [
             'DeltaQ_var', 'DeltaQ_min', 'CapFadeCycle2Slope', 
@@ -127,6 +128,10 @@ class StandardFeatureExtractor():
             # Convert back to DataFrame with feature names
             X = pd.DataFrame(X_normalized, columns=X.columns, index=X.index)
         
+        # Apply log transformation to target if enabled
+        if self.log_transform_target:
+            y = np.log10(y)
+        
         return X, y
     
     def get_feature_names(self) -> list:
@@ -136,6 +141,19 @@ class StandardFeatureExtractor():
             List of feature names
         """
         return self.feature_names.copy()
+    
+    def inverse_transform_target(self, y_transformed: np.ndarray) -> np.ndarray:
+        """Apply inverse transformation to target variable
+        
+        Args:
+            y_transformed: Transformed target values (log10 if log_transform_target=True)
+            
+        Returns:
+            Original scale target values
+        """
+        if self.log_transform_target:
+            return 10 ** y_transformed
+        return y_transformed
     
     def extract_single_cell_features(self, cell_data: Dict[str, Any]) -> Dict[str, float]:
         """Extract features from a single cell

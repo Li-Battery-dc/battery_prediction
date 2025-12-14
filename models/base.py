@@ -56,22 +56,27 @@ class BaseModel(ABC):
         """
         pass
     
-    def evaluate(self, X: pd.DataFrame, y: np.ndarray) -> Dict[str, float]:
+    def evaluate(self, X: pd.DataFrame, y: np.ndarray, feature_extractor=None) -> Dict[str, float]:
         """Evaluate model performance
         
         Args:
             X: Feature data
-            y: True target values
+            y: True target values (may be transformed, e.g., log scale)
+            feature_extractor: Optional feature extractor for inverse transforming predictions and targets
             
         Returns:
-            Dictionary containing evaluation metrics
+            Dictionary containing evaluation metrics (always computed on original scale)
         """
         y_pred = self.predict(X)
         
+        # Apply inverse transformation if feature extractor is provided
+        if feature_extractor is not None and feature_extractor.log_transform_target:
+            y_pred = feature_extractor.inverse_transform_target(y_pred)
+            y = feature_extractor.inverse_transform_target(y)
+        
         metrics = {
-            'rmse': np.sqrt(mean_squared_error(y, y_pred)),
-            'mae': np.mean(np.abs(y - y_pred)),
-            'mape': np.mean(np.abs(y - y_pred) / y) * 100,
+            'mse': mean_squared_error(y, y_pred),
+            'mpe': np.mean(np.abs(y - y_pred) / np.abs(y)) * 100,
             'r2': 1 - np.sum((y - y_pred) ** 2) / np.sum((y - np.mean(y)) ** 2)
         }
         
@@ -173,15 +178,17 @@ class BaseModel(ABC):
         plt.close()
     
     def save_results(self, metrics: Dict[str, float], training_info: Dict[str, Any] = None,
-                     feature_names: list = None, y_true: np.ndarray = None, y_pred: np.ndarray = None):
+                     feature_names: list = None, y_true: np.ndarray = None, y_pred: np.ndarray = None,
+                     train_metrics: Dict[str, float] = None):
         """Save model results to a timestamped directory
         
         Args:
-            metrics: Dictionary of evaluation metrics
+            metrics: Dictionary of evaluation metrics (test set)
             training_info: Dictionary of training information (optional)
             feature_names: List of feature names (optional)
             y_true: True target values for visualization (optional)
             y_pred: Predicted values for visualization (optional)
+            train_metrics: Dictionary of training set evaluation metrics (optional)
         """
         if not self.config:
             print("   - Warning: No config provided, cannot save results")
@@ -197,8 +204,11 @@ class BaseModel(ABC):
         results = {
             'model_type': self.__class__.__name__,
             'timestamp': timestamp,
-            'metrics': metrics
+            'test_metrics': metrics
         }
+        
+        if train_metrics:
+            results['train_metrics'] = train_metrics
         
         if training_info:
             results['training_info'] = training_info
