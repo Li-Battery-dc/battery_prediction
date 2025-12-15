@@ -101,7 +101,7 @@ class StandardFeatureExtractor():
             valid_IR = IR_data[IR_data > 0]
             MinIR[i] = np.min(valid_IR) if len(valid_IR) > 0 else 0
             IRDiff2And100[i] = IR_2 - IR_100
-        
+
         # Stack features into numpy array
         X = np.column_stack([
             DeltaQ_var,
