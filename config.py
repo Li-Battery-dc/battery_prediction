@@ -27,11 +27,18 @@ class Config:
     EPSILON = 1e-8  # To avoid log(0)
     
     # Feature preprocessing options
+    USE_EXTENDED_FEATURES = True  # Use extended feature set; else use standard features
     NORMALIZE_FEATURES = True  # Apply z-score normalization to features
     LOG_TRANSFORM_TARGET = True  # Apply log10 transformation to target (cycle life)
     
     # Training parameters
     RANDOM_STATE = 42
+    
+    # Data splitting parameters
+    USE_RANDOM_SPLIT = True  # If True, use random split; if False, use batch-based split
+    TRAIN_SPLIT = 0.6  
+    VAL_SPLIT = 0.2 
+    TEST_SPLIT = 0.2 
 
 
 class ElasticNetConfig:
@@ -62,8 +69,8 @@ class XGBConfig:
     """Configuration class for XGBoost model parameters"""
     
     # Parameter loading and saving
-    LOAD_PARAMS = './params/1214_1926.json'  # Path to load best parameters JSON file (e.g., './params_best.json')
-    SAVE_PARAMS = './params/1214_1926.json'  # Path to save best parameters after search
+    LOAD_PARAMS = None  # Path to load best parameters JSON file (e.g., './params_best.json')
+    SAVE_PARAMS = './params/1215_1218.json'  # Path to save best parameters after search
     
     # Default parameters (used when LOAD_PARAMS is None and no search is performed)
     DEFAULT_PARAMS = {
@@ -103,11 +110,9 @@ class XGBConfig:
     # -------------------------------------------------------------------------
     # 2. GridSearchCV (Refined Search)
     # -------------------------------------------------------------------------
-    # 注意：运行代码时，通常建议根据 RandomSearch 的最优结果动态调整这里的范围
-    # 下面提供的是基于经验的“高概率”微调范围
     PARAM_GRID = {
         'n_estimators': [300, 400, 600, 800],
-        'max_depth': [2, 3, 5, 7],              # 极大概率最佳深度是 2 或 3
+        'max_depth': [2, 3, 5, 7],           
         'learning_rate': [0.01, 0.03, 0.05, 0.07],
         'min_child_weight': [1, 3, 5],
         'subsample': [0.6, 0.7, 0.8],
@@ -179,13 +184,13 @@ class ExtraTreesConfig:
     # RandomizedSearchCV configuration
     N_ITER_SEARCH = 2000  # Number of iterations for RandomizedSearchCV
     PARAM_DISTRIBUTIONS = {
-        'n_estimators': randint(low=100, high=500),
+        'n_estimators': randint(low=200, high=800),
         'max_depth': [2, 4, 6, 8, None],
-        'min_samples_split': randint(low=1, high=10),
-        'min_samples_leaf': randint(low=1, high=10),
-        'max_features': ['sqrt', 'log2', None, 0.5, 0.7, 0.9],
-        'bootstrap': [False, True],  # ExtraTrees可以选择是否使用bootstrap
-        'max_samples': [None, 0.6, 0.7, 0.8, 0.9],  # 当bootstrap=True时生效
+        'min_samples_split': [2, 3, 4, 5],
+        'min_samples_leaf': [1, 2],
+        'max_features': ['sqrt', 'log2', None, 0.8, 0.9, 1.0],
+        'bootstrap': [False],  # ExtraTrees可以选择是否使用bootstrap
+        # 'max_samples': [None, 0.6, 0.7, 0.8, 0.9],  # 当bootstrap=True时生效
         'min_impurity_decrease': uniform(0.0, 0.01)  # 剪枝参数
     }
 

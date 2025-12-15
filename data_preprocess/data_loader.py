@@ -248,6 +248,19 @@ class BatteryDataLoader:
         
         print("Splitting data into train/val/test sets...")
         
+        if self.config.USE_RANDOM_SPLIT:
+            # Random split based on specified sizes
+            return self._random_split()
+        else:
+            # Original batch-based split
+            return self._batch_based_split()
+    
+    def _batch_based_split(self) -> Tuple[Dict, Dict, Dict]:
+        """Original batch-based split method
+        
+        Returns:
+            Tuple of (train_data, val_data, test_data)
+        """
         numBat1 = len(self.batch1)
         numBat2 = len(self.batch2)
         numBat3 = len(self.batch3)
@@ -263,9 +276,95 @@ class BatteryDataLoader:
         self.val_data = {keys_array[i]: self.bat_dict[keys_array[i]] for i in val_ind}
         self.test_data = {keys_array[i]: self.bat_dict[keys_array[i]] for i in test_ind}
         
-        print(f"Train set: {len(self.train_data)} cells")
-        print(f"Validation set: {len(self.val_data)} cells")
-        print(f"Test set: {len(self.test_data)} cells")
+        print(f"Train set: {len(self.train_data)} cells (batch-based split)")
+        print(f"Validation set: {len(self.val_data)} cells (batch-based split)")
+        print(f"Test set: {len(self.test_data)} cells (batch-based split)")
+        
+        return self.train_data, self.val_data, self.test_data
+    
+    def _random_split(self) -> Tuple[Dict, Dict, Dict]:
+        """Random split within each batch based on specified train/val/test proportions
+        
+        Returns:
+            Tuple of (train_data, val_data, test_data)
+        """
+        # Get split proportions from config
+        train_ratio = self.config.TRAIN_SPLIT
+        val_ratio = self.config.VAL_SPLIT
+        test_ratio = self.config.TEST_SPLIT if hasattr(self.config, 'TEST_SPLIT') else (1.0 - train_ratio - val_ratio)
+        
+        # Validate proportions
+        total_ratio = train_ratio + val_ratio + test_ratio
+        if not np.isclose(total_ratio, 1.0):
+            raise ValueError(f"Train ({train_ratio}) + Val ({val_ratio}) + Test ({test_ratio}) "
+                        f"must sum to 1.0, but got {total_ratio}")
+        
+        # Set random seed
+        np.random.seed(self.config.RANDOM_STATE)
+        
+        # Initialize data dictionaries
+        train_data = {}
+        val_data = {}
+        test_data = {}
+        
+        # Process each batch separately to ensure representation from all batches
+        batches = [
+            ('batch1', self.batch1),
+            ('batch2', self.batch2),
+            ('batch3', self.batch3)
+        ]
+        
+        for batch_name, batch_data in batches:
+            keys_array = list(batch_data.keys())
+            n_cells = len(keys_array)
+            
+            if n_cells == 0:
+                continue
+            
+            # Calculate split sizes for this batch
+            n_train = int(np.round(n_cells * train_ratio))
+            n_val = int(np.round(n_cells * val_ratio))
+            n_test = n_cells - n_train - n_val  # Remaining cells go to test
+            
+            # Ensure at least one cell in each split if possible
+            if n_train == 0 and n_cells > 0:
+                n_train = 1
+                n_test = max(0, n_test - 1)
+            if n_val == 0 and n_cells > 1:
+                n_val = 1
+                n_test = max(0, n_test - 1)
+            
+            # Shuffle and split indices
+            shuffled_indices = np.random.permutation(n_cells)
+            
+            train_idx = shuffled_indices[:n_train]
+            val_idx = shuffled_indices[n_train:n_train + n_val]
+            test_idx = shuffled_indices[n_train + n_val:]
+            
+            # Add cells to respective datasets
+            for idx in train_idx:
+                key = keys_array[idx]
+                train_data[key] = batch_data[key]
+            
+            for idx in val_idx:
+                key = keys_array[idx]
+                val_data[key] = batch_data[key]
+            
+            for idx in test_idx:
+                key = keys_array[idx]
+                test_data[key] = batch_data[key]
+            
+            print(f"{batch_name}: {n_train} train, {n_val} val, {n_test} test (total: {n_cells})")
+        
+        self.train_data = train_data
+        self.val_data = val_data
+        self.test_data = test_data
+        
+        print(f"\nTotal - Train: {len(self.train_data)} cells, "
+            f"Val: {len(self.val_data)} cells, "
+            f"Test: {len(self.test_data)} cells")
+        print(f"Split ratios: {train_ratio:.2f}/{val_ratio:.2f}/{test_ratio:.2f}")
+        print(f"Random seed: {self.config.RANDOM_STATE}")
         
         return self.train_data, self.val_data, self.test_data
     

@@ -9,6 +9,7 @@ from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig, Extr
 from data_preprocess.data_loader import BatteryDataLoader
 
 from feature_extraction.standard import StandardFeatureExtractor
+from feature_extraction.extended import ExtendedFeatureExtractor
 from feature_extraction.cnn_feature import CNNFeatureExtractor
 
 from models.elastic_net import ElasticNetModel
@@ -34,7 +35,10 @@ def extract_features(config):
     train_data, val_data, test_data = load_data(config)
     # Step 2: Extract features
     print("\n2. Extracting features...")
-    feature_extractor = StandardFeatureExtractor(config)
+    if config.USE_EXTENDED_FEATURES:
+        feature_extractor = ExtendedFeatureExtractor(config)
+    else:
+        feature_extractor = StandardFeatureExtractor(config)
     
     X_train, y_train = feature_extractor.extract_features(train_data)
     X_val, y_val = feature_extractor.extract_features(val_data)
