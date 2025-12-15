@@ -222,7 +222,7 @@ def run_extratrees():
     
     # Step 4: Evaluate on train and test sets
     print("\n4. Evaluating on train and test sets...")
-    # evaluate方法内部会自动进行逆转换
+   
     train_metrics = model.evaluate(X_train, y_train, feature_extractor)
     test_metrics = model.evaluate(X_test, y_test, feature_extractor)
     
@@ -244,7 +244,7 @@ def run_CNN():
     """Train and evaluate CNN-BLSTM model for battery cycle life prediction"""
     
     print("=" * 60)
-    print("CNN-BLSTM Deep Learning Model")
+    print("CNN Deep Learning Model")
     print("=" * 60)
     
     # Initialize configurations
@@ -258,9 +258,9 @@ def run_CNN():
     print(f"\n2. Extracting features maps for CNN...")
     feature_extractor = CNNFeatureExtractor(config)
     
-    X_train, y_train = feature_extractor.extract_features(train_data)
-    X_val, y_val = feature_extractor.extract_features(val_data)
-    X_test, y_test = feature_extractor.extract_features(test_data)
+    X_train, y_train = feature_extractor.extract_features(train_data, split='train')
+    X_val, y_val = feature_extractor.extract_features(val_data, split='val')
+    X_test, y_test = feature_extractor.extract_features(test_data, split='test')
     
     print(f"   - Feature extractor: {feature_extractor.__class__.__name__}")
     if config.NORMALIZE_FEATURES:
@@ -272,7 +272,7 @@ def run_CNN():
     print(f"   - Test set: {len(X_test)} samples")
     
     # Step 3: Train model
-    print("\n3. Training CNN-BLSTM model...")
+    print("\n3. Training CNN model...")
     model = CNNModel(config, model_config)
     training_info = model.fit(X_train, y_train, X_val, y_val)
     

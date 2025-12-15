@@ -54,7 +54,7 @@ class CNNModel(BaseModel):
         self.model = BatteryAlexNet(pretrained=True).to(self.device)
         
         criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=1e-5)
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=1e-4)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
         
         # 3. 训练循环

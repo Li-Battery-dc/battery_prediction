@@ -74,11 +74,22 @@ class BaseModel(ABC):
             print("   - Inverse transforming predictions and targets to original scale for evaluation")
             y_pred = feature_extractor.inverse_transform_target(y_pred)
             y = feature_extractor.inverse_transform_target(y)
+
+        # 只有CNN extractor会有scaler --- CNN 特征默认归一化 ---
+        if feature_extractor.target_scaler and feature_extractor.normalize_target:
+            print("   - Inverse scaling predictions and targets to original scale for evaluation")
+            y_pred = feature_extractor.inverse_transform_target(y_pred)
+            y = feature_extractor.inverse_transform_target(y)
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mpe = np.mean(np.abs((y - y_pred) / y)) * 100
+            
+        r2 = 1 - np.sum((y - y_pred) ** 2) / np.sum((y - np.mean(y)) ** 2)
         
         metrics = {
             'mse': mean_squared_error(y, y_pred),
-            'mpe': np.mean(np.abs(y - y_pred) / np.abs(y)) * 100,
-            'r2': 1 - np.sum((y - y_pred) ** 2) / np.sum((y - np.mean(y)) ** 2)
+            'mpe': mpe,
+            'r2': r2
         }
         
         return metrics

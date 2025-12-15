@@ -7,6 +7,7 @@ from typing import Dict, Tuple, Any
 from sklearn.preprocessing import MinMaxScaler
 from config import Config
 import cv2
+import torch
 
 class CNNFeatureExtractor():
     """CNN feature extractor for raw time-series data"""
@@ -19,8 +20,11 @@ class CNNFeatureExtractor():
         """
         self.config = config if config else Config()
         self.normalize = self.config.NORMALIZE_FEATURES
-        self.log_transform_target = self.config.LOG_TRANSFORM_TARGET
-        
+        self.normalize_target = True # CNN 特征默认归一化
+        self.target_scaler = MinMaxScaler(feature_range=(0, 1))
+        self.is_scaler_fitted = False
+        self.log_transform_target = self.config.LOG_TRANSFORM_TARGET # 保留接口兼容，但是main中强制不使用
+
         self.max_cycles = self.config.FEATURE_CYCLE_END # 只用前100个循环
         self.voltage_points = self.config.CNN_VOLTAGE_POINTS  # 电压采样分辨率
         self.target_size = (224, 224)  # CNN输入图像大小
@@ -32,7 +36,7 @@ class CNNFeatureExtractor():
         self.pixel_scaler = MinMaxScaler(feature_range=(0, 1))
         self.is_fitted = False
     
-    def extract_features(self, battery_data: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+    def extract_features(self, battery_data: Dict[str, Any], split: str = 'train') -> Tuple[np.ndarray, np.ndarray]:
         """
         Extract 3-channel graphical features from battery data.
         
@@ -120,11 +124,40 @@ class CNNFeatureExtractor():
         X = np.array(X_resized) # Shape: (N, 224, 224, 3)
 
         # --- 5. 目标值变换 ---
-        if self.log_transform_target:
-            y = np.log10(y)
+        if self.normalize_target:
+            y = y.reshape(-1, 1) # 变为 (N, 1) 以适应 sklearn
+            
+            if split == 'train':
+                # 只有训练集才拟合 scaler
+                self.target_scaler.fit(y)
+                self.is_scaler_fitted = True
+                print(f"   [FeatureExtractor] Target Scaler fitted on TRAIN data. "
+                      f"Range: [{self.target_scaler.data_min_[0]:.2f}, {self.target_scaler.data_max_[0]:.2f}]")
+            
+            if self.is_scaler_fitted:
+                # 所有数据集都应用转换
+                y = self.target_scaler.transform(y)
+            else:
+                print("   [Warning] Target scaler not fitted! Returning raw targets.")
+            
+            y = y.flatten() # 变回 (N,)
 
         print(f"   [FeatureExtractor] Final X shape: {X.shape}, y shape: {y.shape}")
         return X, y
+
+    def inverse_transform_target(self, y: np.ndarray) -> np.ndarray:
+        """统一的逆变换接口，供 Evaluate 和 Predict 使用"""
+        if not self.normalize_target or not self.is_scaler_fitted:
+            return y
+            
+        # 确保输入是 numpy 数组
+        if isinstance(y, torch.Tensor):
+            y = y.detach().cpu().numpy()
+            
+        original_shape = y.shape
+        y = y.reshape(-1, 1)
+        y_inv = self.target_scaler.inverse_transform(y)
+        return y_inv.reshape(original_shape)
     
     def _process_single_cell(self, cell_data: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
