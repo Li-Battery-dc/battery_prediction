@@ -3,7 +3,6 @@ Main script for battery cycle life prediction
 """
 import argparse
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig, ExtraTreesConfig, CNNConfig
 from data_preprocess.data_loader import BatteryDataLoader
@@ -250,13 +249,13 @@ def run_CNN():
     
     # Initialize configurations
     config = Config()
+    config.LOG_TRANSFORM_TARGET = False  # CNN 不进行 log 转换
     model_config = CNNConfig()
     
     train_data, val_data, test_data = load_data(config)
     
     # Step 2: Extract raw time-series features using CNN feature extractor
-    print(f"\n2. Extracting raw time-series features for CNN...")
-    
+    print(f"\n2. Extracting features maps for CNN...")
     feature_extractor = CNNFeatureExtractor(config)
     
     X_train, y_train = feature_extractor.extract_features(train_data)

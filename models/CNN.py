@@ -9,7 +9,7 @@ from typing import Dict, Any, Tuple
 import time
 import copy
 
-from models.CNN_utils.network import CNN_BLSTM
+from models.CNN_utils.network import BatteryAlexNet
 from models.CNN_utils.dataset import BatteryDataset
 
 class CNNModel(BaseModel):
@@ -30,10 +30,9 @@ class CNNModel(BaseModel):
         self.batch_size = getattr(model_config, 'batch_size', 32)
         self.epochs = getattr(model_config, 'epochs', 100)
         self.lr = getattr(model_config, 'learning_rate', 0.001)
-        self.cnn_filters = getattr(model_config, 'cnn_filters', [32, 64])
-        self.lstm_hidden_size = getattr(model_config, 'lstm_hidden_size', 64)
-        self.dropout = getattr(model_config, 'dropout', 0.3)
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = None
         
         print(f"   - Model initialized on device: {self.device}")
 
@@ -51,16 +50,8 @@ class CNNModel(BaseModel):
             val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
             
         # 2. 初始化网络
-        input_length = train_dataset.X.shape[1]
-        input_channels = train_dataset.X.shape[2]
-        
-        self.model = CNN_BLSTM(
-            input_length=input_length,
-            input_channels=input_channels,
-            cnn_filters=self.cnn_filters,
-            lstm_hidden_size=self.lstm_hidden_size,
-            dropout=self.dropout
-        ).to(self.device)
+
+        self.model = BatteryAlexNet(pretrained=True).to(self.device)
         
         criterion = nn.MSELoss()
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=1e-5)
@@ -80,6 +71,10 @@ class CNNModel(BaseModel):
             running_loss = 0.0
             for inputs, targets in train_loader:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
+
+                # outputs 形状是 (Batch, 1), targets 形状是 (Batch,)
+                # 需要 targets.unsqueeze(1) 将 targets 形状变为 (Batch, 1)
+                targets = targets.unsqueeze(1)
                 
                 optimizer.zero_grad()
                 outputs = self.model(inputs)
@@ -99,6 +94,7 @@ class CNNModel(BaseModel):
                 with torch.no_grad():
                     for inputs, targets in val_loader:
                         inputs, targets = inputs.to(self.device), targets.to(self.device)
+                        targets = targets.unsqueeze(1)
                         outputs = self.model(inputs)
                         loss = criterion(outputs, targets)
                         val_loss += loss.item() * inputs.size(0)
@@ -113,10 +109,10 @@ class CNNModel(BaseModel):
                     best_model_wts = copy.deepcopy(self.model.state_dict())
                 
                 if (epoch + 1) % 10 == 0:
-                    print(f"     Epoch {epoch+1}/{self.epochs} - Train Loss: {epoch_loss:.4f} - Val Loss: {epoch_val_loss:.4f}")
+                    print(f"     Epoch {epoch+1}/{self.epochs} - Train mse Loss: {epoch_loss:.4f} - Val mse Loss: {epoch_val_loss:.4f}")
             else:
                 if (epoch + 1) % 10 == 0:
-                    print(f"     Epoch {epoch+1}/{self.epochs} - Train Loss: {epoch_loss:.4f}")
+                    print(f"     Epoch {epoch+1}/{self.epochs} - Train mse Loss: {epoch_loss:.4f}")
                     
         time_elapsed = time.time() - start_time
         print(f"   - Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s")
@@ -146,15 +142,14 @@ class CNNModel(BaseModel):
             for inputs, _ in loader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
-                predictions.append(outputs.cpu().numpy())
+                # outputs 形状是 (Batch, 1)，需要展平为 (Batch,)
+                predictions.append(outputs.cpu().squeeze().numpy())
                 
         return np.concatenate(predictions)
 
     def get_model_params(self):
         """保存模型参数用于复现"""
         return {
-            'cnn_structure': 'Conv1d->BatchNorm->ReLU->MaxPool',
-            'lstm_hidden': self.lstm_hidden_size,
             'optimizer': 'Adam',
             'batch_size': self.batch_size,
             'learning_rate': self.lr

@@ -1,79 +1,85 @@
 import torch
 import torch.nn as nn
+from torchvision import models
 
-class CNN_BLSTM(nn.Module):
-    def __init__(self, input_length=1000, input_channels=1, 
-                 cnn_filters=[32, 64], kernel_sizes=[5, 3], 
-                 lstm_hidden_size=64, lstm_layers=1, dropout=0.3):
-        """
-        Args:
-            input_length: 输入序列长度 (例如 1000 个电压点)
-            input_channels: 输入特征数 (例如 1 代表仅电压)
-            cnn_filters: 卷积层滤波器数量列表
-            kernel_sizes: 卷积核大小列表
-            lstm_hidden_size: LSTM 隐藏层维度
-            lstm_layers: LSTM 层数
-            dropout: Dropout 比率
-        """
-        super(CNN_BLSTM, self).__init__()
+class BatteryAlexNet(nn.Module):
+    """
+    AlexNet for Battery Lifetime Prediction (Regression)
+    基于论文：使用预训练的 AlexNet 并进行微调
+    """
+    def __init__(self, pretrained=True):
+        super(BatteryAlexNet, self).__init__()
         
-        # --- 1. 1D CNN 特征提取模块 ---
-        self.cnn_layers = nn.ModuleList()
-        in_c = input_channels
+        # 加载预训练的 AlexNet
+        # weights='DEFAULT' 相当于 pretrained=True，加载 ImageNet 权重
+        if pretrained:
+            self.model = models.alexnet(weights=models.AlexNet_Weights.DEFAULT)
+        else:
+            self.model = models.alexnet(weights=None)
         
-        for out_c, k_size in zip(cnn_filters, kernel_sizes):
-            self.cnn_layers.append(nn.Sequential(
-                nn.Conv1d(in_channels=in_c, out_channels=out_c, kernel_size=k_size, padding=k_size//2),
-                nn.BatchNorm1d(out_c),
-                nn.ReLU(),
-                nn.MaxPool1d(kernel_size=2, stride=2) # 降采样，减少序列长度
-            ))
-            in_c = out_c
-            input_length = input_length // 2 # MaxPool 减半长度
-            
-        self.dropout = nn.Dropout(dropout)
+        # 修改分类器部分
+        # AlexNet 的 classifier 部分结构如下:
+        # (0): Dropout
+        # (1): Linear(256 * 6 * 6 -> 4096)
+        # (2): ReLU
+        # (3): Dropout
+        # (4): Linear(4096 -> 4096)
+        # (5): ReLU
+        # (6): Linear(4096 -> 1000) (原始输出层)
+
+        for param in self.model.features.parameters():
+            param.requires_grad = False
         
-        # --- 2. BLSTM 时序建模模块 ---
-        # CNN 输出: (Batch, Channels, Length) -> 需要 permute 为 (Batch, Length, Channels) 给 LSTM
-        self.lstm = nn.LSTM(
-            input_size=in_c,  # CNN 的输出通道数作为 LSTM 的输入特征数
-            hidden_size=lstm_hidden_size,
-            num_layers=lstm_layers,
-            batch_first=True,
-            bidirectional=True
+        # 获取最后一个全连接层的输入特征数
+        self.model.classifier = nn.Sequential(
+            nn.Dropout(p=0.5),
+            nn.Linear(256 * 6 * 6, 256),  # 9216 -> 256 (大幅减少参数)
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5),
+            nn.Linear(256, 64),           # 256 -> 64
+            nn.ReLU(inplace=True),
+            nn.Linear(64, 1)              # 输出层
         )
         
-        # --- 3. 回归预测模块 ---
-        # 双向 LSTM 输出维度是 hidden_size * 2
-        self.regressor = nn.Sequential(
-            nn.Linear(lstm_hidden_size * 2, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1) # 输出 log(cycle_life)
+    def forward(self, x):
+        # 输入 x: (Batch, 3, 224, 224)
+        return self.model(x)
+
+# 如果想尝试论文中提到的简单 TCNN，也可以备选如下：
+class TCNN(nn.Module):
+    """
+    Simple CNN (TCNN) from the paper
+    4 layers, 3x3 kernels, ReLU
+    """
+    def __init__(self):
+        super(TCNN, self).__init__()
+        # 这是一个简化的复现，具体通道数论文未完全详述，这里参考常见配置
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        # 224 -> 112 -> 56 -> 28 -> 14
+        self.classifier = nn.Sequential(
+            nn.Linear(128 * 14 * 14, 256),
+            nn.ReLU(inplace=True),
+            nn.Linear(256, 1)
         )
 
     def forward(self, x):
-        # x shape: (Batch, Length, Channels) -> 需要转换为 (Batch, Channels, Length) 给 Conv1d
-        x = x.permute(0, 2, 1)
-        
-        # CNN Forward
-        for layer in self.cnn_layers:
-            x = layer(x)
-        
-        # 准备输入 LSTM: (Batch, Channels, Length) -> (Batch, Length, Channels)
-        x = x.permute(0, 2, 1)
-        x = self.dropout(x)
-        
-        # LSTM Forward
-        # output shape: (Batch, Seq_Len, Hidden*2)
-        # hidden/cell shape: (Layers*2, Batch, Hidden)
-        output, (hn, cn) = self.lstm(x)
-        
-        # 使用最后一个时间步的输出，或者使用 Global Average Pooling
-        # 这里使用最后一个时间步的输出 (包含双向信息)
-        # output[:, -1, :] 取最后一个时间步
-        x = output[:, -1, :] 
-        
-        # Regression
-        out = self.regressor(x)
-        return out.squeeze(1) # 返回 (Batch,)
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x

@@ -27,7 +27,7 @@ class Config:
     EPSILON = 1e-8  # To avoid log(0)
     
     # Feature preprocessing options
-    USE_EXTENDED_FEATURES = True  # Use extended feature set; else use standard features
+    USE_EXTENDED_FEATURES = False  # Use extended feature set; else use standard features
     NORMALIZE_FEATURES = True  # Apply z-score normalization to features
     LOG_TRANSFORM_TARGET = True  # Apply log10 transformation to target (cycle life)
     
@@ -39,6 +39,9 @@ class Config:
     TRAIN_SPLIT = 0.6  
     VAL_SPLIT = 0.2 
     TEST_SPLIT = 0.2 
+
+    # CNN feature extraction parameters
+    CNN_VOLTAGE_POINTS = 100
 
 
 class ElasticNetConfig:
@@ -203,12 +206,7 @@ class CNNConfig:
         # Training parameters
         batch_size = 16
         epochs = 200
-        learning_rate = 0.002
-
-        # Network architecture (can be extended)
-        cnn_filters = [32, 64, 128]
-        lstm_hidden_size = 64
-        dropout = 0.3
+        learning_rate = 1e-4
     
     # Parameter loading and saving
     LOAD_PARAMS = None  # Path to load model weights (e.g., './params/cnn_best.pth')
