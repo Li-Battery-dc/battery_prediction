@@ -1,0 +1,13 @@
+{
+    "best_params": {
+        "bootstrap": false,
+        "max_depth": 8,
+        "max_features": 1.0,
+        "min_impurity_decrease": 0.0026667519666197757,
+        "min_samples_leaf": 1,
+        "min_samples_split": 4,
+        "n_estimators": 608
+    },
+    "best_cv_score": 23326.65156248837,
+    "search_method": "RandomizedSearchCV"
+}

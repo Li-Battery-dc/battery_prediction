@@ -7,7 +7,7 @@ class BatteryAlexNet(nn.Module):
     AlexNet for Battery Lifetime Prediction (Regression)
     基于论文：使用预训练的 AlexNet 并进行微调
     """
-    def __init__(self, pretrained=True):
+    def __init__(self, pretrained=True, freeze_up_to=0): # 冻结最前面的卷积层
         super(BatteryAlexNet, self).__init__()
         
         # 加载预训练的 AlexNet
@@ -16,6 +16,24 @@ class BatteryAlexNet(nn.Module):
             self.model = models.alexnet(weights=models.AlexNet_Weights.DEFAULT)
         else:
             self.model = models.alexnet(weights=None)
+
+        # 精细化冻结策略
+        # 我们遍历 features 的所有子层
+        child_counter = 0
+        for child in self.model.features.children():
+            # 只有卷积层是有参数的，ReLU/Pool 没有参数
+            # 如果索引小于阈值，就冻结；否则解冻
+            if child_counter < freeze_up_to:
+                for param in child.parameters():
+                    param.requires_grad = False
+                # 打印日志确认
+                # print(f"Layer {child_counter} ({type(child).__name__}): FROZEN")
+            else:
+                for param in child.parameters():
+                    param.requires_grad = True
+                # print(f"Layer {child_counter} ({type(child).__name__}): TRAINABLE")
+            
+            child_counter += 1
         
         # 修改分类器部分
         # AlexNet 的 classifier 部分结构如下:
@@ -26,60 +44,20 @@ class BatteryAlexNet(nn.Module):
         # (4): Linear(4096 -> 4096)
         # (5): ReLU
         # (6): Linear(4096 -> 1000) (原始输出层)
-
-        for param in self.model.features.parameters():
-            param.requires_grad = False
-        
-        # 获取最后一个全连接层的输入特征数
+        # 我们将其替换为适合回归任务的结构，防止多参数过拟合
         self.model.classifier = nn.Sequential(
-            nn.Dropout(p=0.5),
-            nn.Linear(256 * 6 * 6, 256),  # 9216 -> 256 (大幅减少参数)
+            nn.Dropout(p=0.5),            # 保持高 Dropout
+            nn.Linear(256 * 6 * 6, 256),  # 9216 -> 512
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(256, 64),           # 256 -> 64
+            nn.Dropout(p=0.5),            # 第二次 Dropout
+            nn.Linear(256, 128),           # 进一步降维
             nn.ReLU(inplace=True),
-            nn.Linear(64, 1)              # 输出层
+            nn.Linear(128, 1)              # 输出层
         )
         
+        
+        
+    
     def forward(self, x):
         # 输入 x: (Batch, 3, 224, 224)
         return self.model(x)
-
-# 如果想尝试论文中提到的简单 TCNN，也可以备选如下：
-class TCNN(nn.Module):
-    """
-    Simple CNN (TCNN) from the paper
-    4 layers, 3x3 kernels, ReLU
-    """
-    def __init__(self):
-        super(TCNN, self).__init__()
-        # 这是一个简化的复现，具体通道数论文未完全详述，这里参考常见配置
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
-        # 224 -> 112 -> 56 -> 28 -> 14
-        self.classifier = nn.Sequential(
-            nn.Linear(128 * 14 * 14, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 1)
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x

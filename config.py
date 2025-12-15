@@ -27,9 +27,9 @@ class Config:
     EPSILON = 1e-8  # To avoid log(0)
     
     # Feature preprocessing options
-    USE_EXTENDED_FEATURES = False  # Use extended feature set; else use standard features
+    USE_EXTENDED_FEATURES = True  # Use extended feature set; else use standard features
     NORMALIZE_FEATURES = True  # Apply z-score normalization to features
-    LOG_TRANSFORM_TARGET = True  # Apply log10 transformation to target (cycle life)
+    LOG_TRANSFORM_TARGET = False  # Apply log10 transformation to target (cycle life)
     
     # Training parameters
     RANDOM_STATE = 42
@@ -73,7 +73,7 @@ class XGBConfig:
     
     # Parameter loading and saving
     LOAD_PARAMS = None  # Path to load best parameters JSON file (e.g., './params_best.json')
-    SAVE_PARAMS = './params/1215_1218.json'  # Path to save best parameters after search
+    SAVE_PARAMS = './params/xgb_best.json'  # Path to save best parameters after search
     
     # Default parameters (used when LOAD_PARAMS is None and no search is performed)
     DEFAULT_PARAMS = {
@@ -97,7 +97,7 @@ class XGBConfig:
     # -------------------------------------------------------------------------
     # 1. RandomizedSearchCV (Broad Exploration)
     # -------------------------------------------------------------------------
-    N_ITER_SEARCH = 10000  # Number of iterations for RandomizedSearchCV
+    N_ITER_SEARCH = 2000  # Number of iterations for RandomizedSearchCV
     PARAM_DISTRIBUTIONS = {
         'n_estimators': randint(low=100, high=800),
         'max_depth': randint(low=2, high=5),
@@ -204,9 +204,9 @@ class CNNConfig:
     class ModelConfig:
         """Inner class for model-specific configuration"""
         # Training parameters
-        batch_size = 16
-        epochs = 200
-        learning_rate = 1e-4
+        batch_size = 16 # 数据量少，要用小batch size
+        epochs = 100
+        learning_rate = 5e-5
     
     # Parameter loading and saving
     LOAD_PARAMS = None  # Path to load model weights (e.g., './params/cnn_best.pth')

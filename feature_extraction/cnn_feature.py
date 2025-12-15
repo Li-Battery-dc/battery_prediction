@@ -136,7 +136,11 @@ class CNNFeatureExtractor():
             
             if self.is_scaler_fitted:
                 # 所有数据集都应用转换
+                y_before = y.copy()
                 y = self.target_scaler.transform(y)
+                print(f"   [FeatureExtractor] Target values transformed for {split.upper()} set. "
+                      f"Original range: [{y_before.min():.2f}, {y_before.max():.2f}] "
+                      f"-> Normalized range: [{y.min():.4f}, {y.max():.4f}]")
             else:
                 print("   [Warning] Target scaler not fitted! Returning raw targets.")
             
@@ -147,17 +151,38 @@ class CNNFeatureExtractor():
 
     def inverse_transform_target(self, y: np.ndarray) -> np.ndarray:
         """统一的逆变换接口，供 Evaluate 和 Predict 使用"""
-        if not self.normalize_target or not self.is_scaler_fitted:
+        # 检查是否需要逆变换
+        if not self.normalize_target:
+            # print(f"   [InverseTransform] normalize_target=False, returning raw values (no transform)")
+            return y
+            
+        if not self.is_scaler_fitted:
+            # print(f"   [InverseTransform] Warning: Scaler not fitted! Returning raw values")
             return y
             
         # 确保输入是 numpy 数组
+        input_type = type(y).__name__
         if isinstance(y, torch.Tensor):
             y = y.detach().cpu().numpy()
+            # print(f"   [InverseTransform] Converted from torch.Tensor to numpy array")
             
         original_shape = y.shape
+        y_normalized = y.copy()
+        
+        # 应用逆变换
         y = y.reshape(-1, 1)
         y_inv = self.target_scaler.inverse_transform(y)
-        return y_inv.reshape(original_shape)
+        y_inv = y_inv.reshape(original_shape)
+        
+        # 输出详细信息
+        # print(f"   [InverseTransform] Applied inverse transform:")
+        # print(f"      - Input type: {input_type}, shape: {original_shape}")
+        # print(f"      - Normalized range: [{y_normalized.min():.4f}, {y_normalized.max():.4f}]")
+        # print(f"      - Original range: [{y_inv.min():.2f}, {y_inv.max():.2f}]")
+        # print(f"      - Scaler params: min={self.target_scaler.data_min_[0]:.2f}, max={self.target_scaler.data_max_[0]:.2f}")
+        # print(f"      - Sample values (first 3): normalized={y_normalized.flatten()[:3]}, original={y_inv.flatten()[:3]}")
+        
+        return y_inv
     
     def _process_single_cell(self, cell_data: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -228,12 +253,6 @@ class CNNFeatureExtractor():
         q_interp = np.interp(self.ref_voltage, v_unique, q_unique, left=q_unique.max(), right=0.0)
         
         return q_interp
-
-    def inverse_transform_target(self, y: np.ndarray) -> np.ndarray:
-        """还原预测值到真实循环次数"""
-        if self.log_transform_target:
-            return np.power(10, y)
-        return y
     
     def get_feature_names(self):
         """返回特征名称（CNN使用图像特征）"""

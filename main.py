@@ -4,6 +4,8 @@ Main script for battery cycle life prediction
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+import shutil
 from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig, ExtraTreesConfig, CNNConfig
 from data_preprocess.data_loader import BatteryDataLoader
 
@@ -299,6 +301,16 @@ def run_CNN():
     y_test_original = feature_extractor.inverse_transform_target(y_test)
     feature_names = feature_extractor.get_feature_names()
     model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
+
+    # 将最佳模型权重复制到本次结果目录，便于归档
+    saved_weight_src = training_info.get('saved_model_path') if isinstance(training_info, dict) else None
+    if saved_weight_src and model.result_dir:
+        dst_path = os.path.join(model.result_dir, os.path.basename(saved_weight_src))
+        try:
+            shutil.copy2(saved_weight_src, dst_path)
+            print(f"   - Copied best model weights to: {dst_path}")
+        except Exception as e:
+            print(f"   - Warning: failed to copy weights to results dir: {e}")
 
 def main():
     """Main function with command-line argument parsing"""

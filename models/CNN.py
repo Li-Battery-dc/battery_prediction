@@ -8,6 +8,7 @@ import pandas as pd
 from typing import Dict, Any, Tuple
 import time
 import copy
+import os
 
 from models.CNN_utils.network import BatteryAlexNet
 from models.CNN_utils.dataset import BatteryDataset
@@ -50,17 +51,27 @@ class CNNModel(BaseModel):
             val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
             
         # 2. 初始化网络
-
         self.model = BatteryAlexNet(pretrained=True).to(self.device)
+
+        # 如果配置中提供了已保存的权重，则预先加载（用于复现或热启动）
+        loaded_weights_path = None
+        if self.model_config and getattr(self.model_config, 'LOAD_PARAMS', None):
+            load_path = self.model_config.LOAD_PARAMS
+            if load_path and os.path.exists(load_path):
+                state_dict = torch.load(load_path, map_location=self.device)
+                self.model.load_state_dict(state_dict)
+                loaded_weights_path = load_path
+                print(f"   - Loaded pretrained weights from {load_path}")
         
         criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=1e-4)
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=1e-2) # 大量正则化防止过拟合
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
         
         # 3. 训练循环
         best_val_loss = float('inf')
         best_model_wts = copy.deepcopy(self.model.state_dict())
         history = {'train_loss': [], 'val_loss': []}
+        best_epoch = None
         
         print(f"   - Starting training for {self.epochs} epochs...")
         start_time = time.time()
@@ -107,6 +118,7 @@ class CNNModel(BaseModel):
                 if epoch_val_loss < best_val_loss:
                     best_val_loss = epoch_val_loss
                     best_model_wts = copy.deepcopy(self.model.state_dict())
+                    best_epoch = epoch + 1
                 
                 if (epoch + 1) % 10 == 0:
                     print(f"     Epoch {epoch+1}/{self.epochs} - Train mse Loss: {epoch_loss:.4f} - Val mse Loss: {epoch_val_loss:.4f}")
@@ -120,9 +132,29 @@ class CNNModel(BaseModel):
         # Load best weights
         if val_loader:
             self.model.load_state_dict(best_model_wts)
+        else:
+            best_epoch = self.epochs
             
+        saved_model_path = None
         self.is_fitted = True
-        return history
+        self.saved_model_path = None
+        self.loaded_weights_path = loaded_weights_path
+        if self.model_config and getattr(self.model_config, 'SAVE_PARAMS', None):
+            save_path = self.model_config.SAVE_PARAMS
+            os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+            torch.save(best_model_wts, save_path)
+            saved_model_path = save_path
+            self.saved_model_path = save_path
+            print(f"   - Saved best model weights to {save_path}")
+
+        return {
+            'train_loss': history['train_loss'],
+            'val_loss': history['val_loss'],
+            'best_val_loss': best_val_loss if val_loader else None,
+            'best_epoch': best_epoch,
+            'saved_model_path': saved_model_path,
+            'loaded_weights_path': loaded_weights_path
+        }
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """模型推理"""
@@ -152,5 +184,7 @@ class CNNModel(BaseModel):
         return {
             'optimizer': 'Adam',
             'batch_size': self.batch_size,
-            'learning_rate': self.lr
+            'learning_rate': self.lr,
+            'saved_model_path': getattr(self, 'saved_model_path', None),
+            'loaded_weights_path': getattr(self, 'loaded_weights_path', None)
         }
