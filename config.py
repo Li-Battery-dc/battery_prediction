@@ -30,10 +30,6 @@ class Config:
     NORMALIZE_FEATURES = True  # Apply z-score normalization to features
     LOG_TRANSFORM_TARGET = True  # Apply log10 transformation to target (cycle life)
     
-    # CNN feature extraction
-    CNN_NUM_POINTS_PER_CYCLE = 1000  # Number of points to sample per cycle
-    CNN_FEATURE_NAMES = ['V', 'I', 'T']
-
     # Training parameters
     RANDOM_STATE = 42
 
@@ -158,6 +154,42 @@ class RandomForestConfig:
     }
 
 
+class ExtraTreesConfig:
+    """Configuration class for Extra Trees (Extremely Randomized Trees) model parameters"""
+    
+    # Parameter loading and saving
+    LOAD_PARAMS = None  # Path to load best parameters JSON file (e.g., './params/et_best.json')
+    SAVE_PARAMS = './params/et_best.json'  # Path to save best parameters after search
+    
+    # Default parameters (used when LOAD_PARAMS is None and no search is performed)
+    DEFAULT_PARAMS = {
+        'n_estimators': 200,
+        'max_depth': 10,
+        'min_samples_split': 5,
+        'min_samples_leaf': 2,
+        'max_features': 'sqrt',
+        'bootstrap': False,  # ExtraTrees默认不使用bootstrap
+        'max_samples': None
+    }
+    
+    # Hyperparameter search configuration
+    CV_FOLDS = 5
+    SCORING = 'neg_mean_squared_error'  # Scoring metric for CV
+    
+    # RandomizedSearchCV configuration
+    N_ITER_SEARCH = 2000  # Number of iterations for RandomizedSearchCV
+    PARAM_DISTRIBUTIONS = {
+        'n_estimators': randint(low=100, high=500),
+        'max_depth': [2, 4, 6, 8, None],
+        'min_samples_split': randint(low=1, high=10),
+        'min_samples_leaf': randint(low=1, high=10),
+        'max_features': ['sqrt', 'log2', None, 0.5, 0.7, 0.9],
+        'bootstrap': [False, True],  # ExtraTrees可以选择是否使用bootstrap
+        'max_samples': [None, 0.6, 0.7, 0.8, 0.9],  # 当bootstrap=True时生效
+        'min_impurity_decrease': uniform(0.0, 0.01)  # 剪枝参数
+    }
+
+
 class CNNConfig:
     """Configuration class for CNN-BLSTM deep learning model parameters"""
     
@@ -166,12 +198,12 @@ class CNNConfig:
         # Training parameters
         batch_size = 16
         epochs = 200
-        learning_rate = 0.001
+        learning_rate = 0.002
 
         # Network architecture (can be extended)
-        cnn_filters = [32, 64]
+        cnn_filters = [32, 64, 128]
         lstm_hidden_size = 64
-        dropout = 0.5
+        dropout = 0.3
     
     # Parameter loading and saving
     LOAD_PARAMS = None  # Path to load model weights (e.g., './params/cnn_best.pth')

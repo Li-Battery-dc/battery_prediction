@@ -1,10 +1,10 @@
 """
-Random Forest model implementation for battery cycle life prediction
+Extra Trees (Extremely Randomized Trees) model implementation for battery cycle life prediction
 """
 import os
 import json
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import ExtraTreesRegressor
 from typing import Dict, Any, Tuple
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import RandomizedSearchCV
@@ -13,7 +13,7 @@ import joblib
 import contextlib
 
 from models.base import BaseModel
-from config import Config, RandomForestConfig
+from config import Config, ExtraTreesConfig
 
 
 @contextlib.contextmanager
@@ -33,25 +33,25 @@ def tqdm_joblib(tqdm_object):
         tqdm_object.close()
 
 
-class RandomForestModel(BaseModel):
-    """Random Forest model for battery cycle life prediction"""
+class ExtraTreesModel(BaseModel):
+    """Extra Trees (Extremely Randomized Trees) model for battery cycle life prediction"""
     
-    def __init__(self, config: Config = None, model_config: RandomForestConfig = None):
-        """Initialize Random Forest model"""
+    def __init__(self, config: Config = None, model_config: ExtraTreesConfig = None):
+        """Initialize Extra Trees model"""
         super().__init__(config, model_config)
         self.config = config if config else Config()
-        self.model_config = model_config if model_config else RandomForestConfig()
+        self.model_config = model_config if model_config else ExtraTreesConfig()
         self.model_params = {}
         
     def fit(self, X_train: np.ndarray, y_train: np.ndarray, 
             X_val: np.ndarray = None, y_val: np.ndarray = None) -> Dict[str, Any]:
-        """Train the Random Forest model with parameter loading or hyperparameter search
+        """Train the Extra Trees model with parameter loading or hyperparameter search
         
         Note: y_train and y_val should already be log-transformed if using log transformation.
               Validation set will be merged with training set for cross-validation.
         """
         
-        # 1. 合并训练集和验证集用于交叉验证（RF不需要early stopping）
+        # 1. 合并训练集和验证集用于交叉验证（ExtraTrees不需要early stopping）
         if X_val is not None and y_val is not None:
             X_train_full = np.vstack([X_train, X_val])
             y_train_full = np.concatenate([y_train, y_val])
@@ -75,7 +75,7 @@ class RandomForestModel(BaseModel):
             print("No parameter file found. Performing hyperparameter search...")
             
             # 基础模型
-            base_model = RandomForestRegressor(
+            base_model = ExtraTreesRegressor(
                 random_state=self.config.RANDOM_STATE,
                 n_jobs=1  # 并行由 joblib 管理
             )
@@ -124,7 +124,7 @@ class RandomForestModel(BaseModel):
                 print(f"   - Saved best parameters to: {self.model_config.SAVE_PARAMS}")
         
         # 3. 使用最佳参数训练最终模型
-        print("\nTraining final Random Forest model with best parameters...")
+        print("\nTraining final Extra Trees model with best parameters...")
         
         self.model_params = {
             **best_params,
@@ -132,7 +132,7 @@ class RandomForestModel(BaseModel):
             'n_jobs': -1
         }
         
-        self.model = RandomForestRegressor(**self.model_params)
+        self.model = ExtraTreesRegressor(**self.model_params)
         
         # 4. 训练模型
         self.model.fit(X_train_full, y_train_full)
@@ -168,7 +168,7 @@ class RandomForestModel(BaseModel):
         return y_pred
     
     def get_feature_importance(self, feature_names: list = None) -> Dict[str, float]:
-        """Get feature importance from Random Forest model (based on impurity reduction)"""
+        """Get feature importance from Extra Trees model (based on impurity reduction)"""
         if not self.is_fitted:
             raise RuntimeError("Model must be fitted before getting feature importance")
         

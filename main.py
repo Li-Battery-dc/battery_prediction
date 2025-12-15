@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig, CNNConfig
+from config import Config, ElasticNetConfig, XGBConfig, RandomForestConfig, ExtraTreesConfig, CNNConfig
 from data_preprocess.data_loader import BatteryDataLoader
 
 from feature_extraction.standard import StandardFeatureExtractor
@@ -14,11 +14,12 @@ from feature_extraction.cnn_feature import CNNFeatureExtractor
 from models.elastic_net import ElasticNetModel
 from models.xgb import XGBoostModel
 from models.rf import RandomForestModel
+from models.extra_trees import ExtraTreesModel
 from models.CNN import CNNModel
 
 def load_data(config):
     print("\n1. Loading and preparing data...")
-    data_loader = BatteryDataLoader(config)
+    data_loader = BatteryDataLoader(config, apply_outlier_removal=False)
     train_data, val_data, test_data = data_loader.split_data()
     return train_data, val_data, test_data
 
@@ -192,6 +193,50 @@ def run_rf():
     y_test_original = feature_extractor.inverse_transform_target(y_test)
     model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
 
+def run_extratrees():
+    """Train and evaluate Extra Trees model for battery cycle life prediction"""
+    
+    print("=" * 60)
+    print("Extra Trees Model")
+    print("=" * 60)
+    
+    # Initialize configurations
+    config = Config()
+    model_config = ExtraTreesConfig()
+    
+    # Load data and extract features
+    X_train, y_train, X_val, y_val, X_test, y_test, feature_extractor= \
+        extract_features(config)
+    
+    feature_names = feature_extractor.get_feature_names()
+    
+    # Step 3: Train model (auto load params or perform search)
+    print("\n3. Training Extra Trees model...")
+    model = ExtraTreesModel(config, model_config)
+    training_info = model.fit(X_train, y_train, X_val, y_val)
+    
+    print(f"   - Model trained with {training_info.get('n_estimators', 'N/A')} trees")
+    
+    # Step 4: Evaluate on train and test sets
+    print("\n4. Evaluating on train and test sets...")
+    # evaluate方法内部会自动进行逆转换
+    train_metrics = model.evaluate(X_train, y_train, feature_extractor)
+    test_metrics = model.evaluate(X_test, y_test, feature_extractor)
+    
+    print(f"   - Train MSE: {train_metrics['mse']:.4f}")
+    print(f"   - Train MPE: {train_metrics['mpe']:.2f}%")
+    print(f"   - Train R²: {train_metrics['r2']:.4f}")
+    print(f"   - Test MSE: {test_metrics['mse']:.4f}")
+    print(f"   - Test MPE: {test_metrics['mpe']:.2f}%")
+    print(f"   - Test R²: {test_metrics['r2']:.4f}")
+    
+    # Step 5: Save results and generate visualization
+    print("\n5. Saving results and generating visualizations...")
+    # 获取原始尺度的预测值和真实值用于可视化
+    y_pred_test = feature_extractor.inverse_transform_target(model.predict(X_test))
+    y_test_original = feature_extractor.inverse_transform_target(y_test)
+    model.save_results(test_metrics, training_info, feature_names, y_test_original, y_pred_test, train_metrics=train_metrics)
+
 def run_CNN():
     """Train and evaluate CNN-BLSTM model for battery cycle life prediction"""
     
@@ -262,9 +307,10 @@ Examples:
   python main.py --model elasticnet
   python main.py --model xgboost
   python main.py --model rf
+  python main.py --model extratrees
   python main.py --model cnn
   
-Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAMS if specified,
+Note: XGBoost, Random Forest and Extra Trees will auto-load parameters from config.LOAD_PARAMS if specified,
       otherwise they will perform hyperparameter search and save to config.SAVE_PARAMS.
       CNN uses raw time-series features (e.g., Vdlin) instead of engineered features.
         """
@@ -274,7 +320,7 @@ Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAM
         '--model',
         type=str,
         default='elasticnet',
-        choices=['elasticnet', 'xgboost', 'rf', 'cnn'],
+        choices=['elasticnet', 'xgboost', 'rf', 'extratrees', 'cnn'],
         help='Model type to use for prediction (default: elasticnet)'
     )
     
@@ -293,6 +339,8 @@ Note: XGBoost and Random Forest will auto-load parameters from config.LOAD_PARAM
         run_xgboost()
     elif args.model == 'rf':
         run_rf()
+    elif args.model == 'extratrees':
+        run_extratrees()
     elif args.model == 'cnn':
         run_CNN()
     else:

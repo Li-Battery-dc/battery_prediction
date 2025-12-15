@@ -4,7 +4,6 @@ XGBoost model implementation for battery cycle life prediction
 import os
 import json
 import numpy as np
-import pandas as pd
 import xgboost as xgb
 from typing import Dict, Any, Tuple
 from sklearn.metrics import mean_squared_error
@@ -64,7 +63,7 @@ class XGBoostModel(BaseModel):
             
             # 合并训练集和验证集用于交叉验证
             if X_val is not None and y_val is not None:
-                X_train_full = pd.concat([X_train, X_val])
+                X_train_full = np.vstack([X_train, X_val])
                 y_train_full = np.concatenate([y_train, y_val])
             else:
                 X_train_full = X_train

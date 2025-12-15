@@ -18,13 +18,15 @@ ADD_LEN = [662, 981, 1060, 208, 482]
 class BatteryDataLoader:
     """Data loader for battery cycle life datasets"""
     
-    def __init__(self, config: Config = None):
+    def __init__(self, config: Config = None, apply_outlier_removal: bool = True):
         """Initialize data loader with configuration
         
         Args:
             config: Configuration object containing data paths and parameters
+            apply_outlier_removal: Whether to apply 3-sigma outlier removal (default: True)
         """
         self.config = config if config else Config()
+        self.apply_outlier_removal = apply_outlier_removal
         self.batch1 = None
         self.batch2 = None
         self.batch3 = None
@@ -73,6 +75,14 @@ class BatteryDataLoader:
         print(f"Loaded batch3: {len(self.batch3)} cells")
 
         self.bat_dict = {**self.batch1, **self.batch2, **self.batch3}
+        
+        # self.bat_dict = self._remove_first_cycle_data(self.bat_dict)
+        # Apply 3-sigma outlier removal if enabled
+        if self.apply_outlier_removal:
+            print("Applying 3-sigma outlier removal...")
+            self.bat_dict = self._remove_outliers_from_dataset(self.bat_dict)
+            print("Outlier removal completed.")
+        
         return self.bat_dict
     
     def _merge_batch_data(self) -> Dict[str, Any]:
@@ -101,6 +111,133 @@ class BatteryDataLoader:
                 del batch2[cell]
         
         return batch1, batch2
+
+    # def _remove_first_cycle_data(self, bat_dict: Dict[str, Any]) -> Dict[str, Any]:
+    #     """
+    #     移除所有电池的第一个循环数据（Cycle 1）。
+    #     - 从详细的循环数据 'cycles' 中移除键 '1'。
+    #     - 从 'summary' 数据中移除索引 1（对应 Cycle 1），并修复周期编号。
+    #     """
+    #     cleaned_dict = {}
+    #     for key, cell in bat_dict.items():
+    #         # 1. 从详细循环数据中移除
+    #         if '1' in cell['cycles']:
+    #             del cell['cycles']['1']
+            
+    #         # 2. 从汇总数据 'summary' 中移除索引 1
+    #         if len(cell['summary']['cycle']) > 1:
+    #             # 遍历所有 summary 键（'cycle', 'QD', 'IR' 等）
+    #             for summary_key in cell['summary'].keys():
+    #                 # 确保数组长度足够
+    #                 if cell['summary'][summary_key].shape[0] > 1:
+    #                     data = cell['summary'][summary_key]
+    #                     # 保留索引 0（通常是初始状态）和从索引 2（Cycle 2）开始的数据
+    #                     cell['summary'][summary_key] = np.concatenate((data[0:1], data[2:]))
+                        
+    #                     # 修复 'cycle' 键的编号，使其从 0, 1, 2... 连续
+    #                     if summary_key == 'cycle':
+    #                         cell['summary'][summary_key] = np.arange(len(cell['summary'][summary_key]))
+
+    #         cleaned_dict[key] = cell
+            
+    #     return cleaned_dict
+    
+    def _remove_outliers_3sigma(self, data: np.ndarray) -> np.ndarray:
+        """Remove outliers using 3-sigma rule and replace with neighboring mean
+        
+        Args:
+            data: 1D numpy array
+            
+        Returns:
+            Array with outliers replaced by neighboring mean
+        """
+        if len(data) == 0:
+            return data
+            
+        data = data.copy()
+        mean = np.mean(data)
+        std = np.std(data)
+        
+        if std == 0:
+            return data
+        
+        # Find outliers (beyond 3 sigma)
+        outlier_mask = np.abs(data - mean) > 3 * std
+        outlier_indices = np.where(outlier_mask)[0]
+        
+        # Replace each outlier with mean of its neighbors
+        for idx in outlier_indices:
+            neighbors = []
+            
+            # Get left neighbor
+            if idx > 0:
+                neighbors.append(data[idx - 1])
+            
+            # Get right neighbor
+            if idx < len(data) - 1:
+                neighbors.append(data[idx + 1])
+            
+            # Replace with neighbor mean, or keep original if no neighbors
+            if len(neighbors) > 0:
+                data[idx] = np.mean(neighbors)
+        
+        return data
+    
+    def _remove_outliers_from_dataset(self, bat_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply 3-sigma outlier removal to all numerical data in the dataset
+        
+        Args:
+            bat_dict: Battery dictionary
+            
+        Returns:
+            Battery dictionary with outliers removed
+        """
+        outlier_count = 0
+        
+        for cell_id, cell_data in bat_dict.items():
+            # Process summary data
+            if 'summary' in cell_data:
+                summary_keys = ['IR', 'QC', 'QD', 'Tavg', 'Tmin', 'Tmax', 'chargetime']
+                for key in summary_keys:
+                    if key in cell_data['summary']:
+                        original = cell_data['summary'][key]
+                        cleaned = self._remove_outliers_3sigma(original)
+                        outliers = np.sum(np.abs(original - cleaned) > 1e-10)
+                        outlier_count += outliers
+                        cell_data['summary'][key] = cleaned
+            
+            # Process cycles data
+            if 'cycles' in cell_data:
+                cycle_keys = ['I', 'Qc', 'Qd', 'V', 'T', 't', 'dQdV', 'Qdlin', 'Tdlin']
+                for cycle_id, cycle_data in cell_data['cycles'].items():
+                    for key in cycle_keys:
+                        if key in cycle_data:
+                            original = cycle_data[key]
+                            cleaned = self._remove_outliers_3sigma(original)
+                            outliers = np.sum(np.abs(original - cleaned) > 1e-10)
+                            outlier_count += outliers
+                            cycle_data[key] = cleaned
+            
+            # Process Vdlin (voltage discharge linear interpolation)
+            if 'Vdlin' in cell_data:
+                vdlin = cell_data['Vdlin']
+                if vdlin.ndim == 2:
+                    # Process each cycle (column)
+                    for i in range(vdlin.shape[1]):
+                        original = vdlin[:, i]
+                        cleaned = self._remove_outliers_3sigma(original)
+                        outliers = np.sum(np.abs(original - cleaned) > 1e-10)
+                        outlier_count += outliers
+                        vdlin[:, i] = cleaned
+                elif vdlin.ndim == 1:
+                    original = vdlin
+                    cleaned = self._remove_outliers_3sigma(original)
+                    outliers = np.sum(np.abs(original - cleaned) > 1e-10)
+                    outlier_count += outliers
+                    cell_data['Vdlin'] = cleaned
+        
+        print(f"Total outliers detected and replaced: {outlier_count}")
+        return bat_dict
     
     def split_data(self) -> Tuple[Dict, Dict, Dict]:
         """Split merged data into train, validation, and test sets
