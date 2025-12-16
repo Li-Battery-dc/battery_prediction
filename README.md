@@ -1,37 +1,201 @@
-# Battery Cycle Life Prediction
+# 电池循环寿命预测项目 (Battery Cycle Life Prediction)
 
-This project trains regression models to predict lithium-ion battery cycle life using the public Stanford/MIT dataset. Both classical ML (Elastic Net, Random Forest, Extra Trees, XGBoost) and a CNN-BLSTM model on graphical time-series features are provided.
+基于初始循环数据的锂离子电池剩余循环寿命机器学习预测项目，实现了Nature Energy 2019年论文的研究方法。
 
-## Quickstart
+## 📋 项目简介 (Project Overview)
 
-1. **Environment**
-   - Python 3.9+
-   - Install dependencies: `pip install -r requirements.txt`
-   - GPU is recommended for the CNN model (uses PyTorch + torchvision).
+本项目使用机器学习和深度学习方法，仅基于电池前100个充放电循环的数据，准确预测锂离子电池的剩余循环寿命。项目实现了多种算法模型，包括传统的机器学习方法和基于CNN的深度学习方法，预测误差可达约8%。
 
-2. **Data**
-   - Place the processed pickle files under `Data/` as configured in `config.py` (`batch1.pkl`, `batch2.pkl`, `batch3.pkl`).
-   - Raw `.mat` files are included; you can regenerate the pickles with the notebooks in `data_preprocess/` if needed.
+## 🏗️ 项目结构 (Project Structure)
 
-3. **Run a model**
-   - Elastic Net: `python main.py --model elasticnet`
-   - XGBoost: `python main.py --model xgboost`
-   - Random Forest: `python main.py --model rf`
-   - Extra Trees: `python main.py --model extratrees`
-   - CNN-BLSTM: `python main.py --model cnn`
+```
+battery_prediction/
+├── main.py                     # 主程序入口，支持5种模型
+├── requirements.txt            # Python依赖包
+├── data_preprocess/            # 数据预处理模块
+│   └── data_loader.py          # 数据加载和清洗
+├── feature_extraction/         # 特征提取模块
+│   ├── standard.py             # 标准特征（9维）
+│   ├── extended.py             # 扩展特征（12维）
+│   └── cnn_feature.py          # CNN图形特征
+├── models/                     # 模型实现
+│   ├── base.py                 # 基础抽象类
+│   ├── elastic_net.py          # ElasticNet回归
+│   ├── xgb.py                  # XGBoost
+│   ├── rf.py                   # 随机森林
+│   ├── extra_trees.py          # 极端随机树
+│   |── CNN.py                  # CNN-深度学习
+|   |── CNN_utils/                  # CNN工具类
+│     ├── network.py              # AlexNet网络架构
+│     └── dataset.py              # PyTorch数据集
+├── config.py                   # 配置管理
+├── Data/                       # 数据目录
+│   ├── batch1.pkl              # 预处理数据集1
+│   ├── batch2.pkl              # 预处理数据集2
+│   ├── batch3.pkl              # 预处理数据集3
+│   ├── *.mat                   # 原始MATLAB数据
+│   └── data_description.md     # 数据详细说明
+├── params/                     # 模型参数
+│   ├── cnn_best.pth            # CNN最佳参数
+│   ├── xgb_best.json           # XGBoost最佳参数
+│   ├── rf_best.json            # 随机森林最佳参数
+│   └── et_best.json            # 极端随机树最佳参数
+└── results/                    # 实验结果
+    └── timestamp/              # 时间戳结果文件夹
+        ├── results.json        # 结果数据
+        ├── prediction_plot.png # 预测可视化
+        └── feature_importance.png # 特征重要性
+```
 
-4. **Parameters & checkpoints**
-   - Tree/XGBoost models load parameters from `config.py` (`LOAD_PARAMS`) or run a search and save best params to `params/*.json`.
-   - The CNN model now saves best weights to `params/cnn_best.pth` after training and will automatically load from `CNNConfig.LOAD_PARAMS` if present.
+## 🚀 快速开始 (Quick Start)
 
-5. **Results & artifacts**
-   - Each run writes a timestamped folder under `results/` with `results.json`, metrics, and plots (prediction scatter; feature importance when available). The CNN run also logs the saved weights path in `results.json`.
+### 1. 环境配置
 
-## Testing
+```bash
+# 安装依赖
+pip install -r requirements.txt
+```
 
-Run the lightweight regression/feature unit tests with `pytest` (see `test_*.py`).
+### 2. 运行基础模型
 
-## Notes
+在此之前可以先修改config中的运行参数，具体修改方式见下面的说明
 
-- Key runtime options (normalization, target log transform, split ratios) are centralized in `config.py`.
-- CNN features are generated on-the-fly from raw cycles using `feature_extraction/cnn_feature.py`; normalization of targets is handled inside that extractor.
+```bash
+# 运行ElasticNet模型
+python main.py --model elasticnet
+
+# 运行XGBoost模型
+python main.py --model xgboost
+
+# 运行随机森林模型
+python main.py --model rf
+
+# 运行极端随机树模型
+python main.py --model extratrees
+
+# 运行CNN深度学习模型
+python main.py --model cnn
+```
+
+## 📊 数据集说明 (Dataset)
+
+### 数据来源
+- **来源**: Nature Energy 2019年论文《Data-driven prediction of battery cycle life before capacity degradation》
+- **电池类型**: 商用LFP/石墨锂离子电池 (A123 Systems APR18650M1A, 1.1 Ah)
+- **数据规模**: 124节电池，72种快充策略，总计约96,700次循环
+- **循环寿命**: 150-2300次，平均806±377次
+
+### 数据结构
+```
+Data/
+├── batch1.pkl     # 41节电池 (训练集)
+├── batch2.pkl     # 43节电池 (训练集)
+└── batch3.pkl     # 40节电池 (测试集)
+```
+
+每节电池数据包含:
+- `cycle_life`: 总循环寿命（目标变量）
+- `charge_policy`: 充电策略
+- `summary`: 每循环汇总统计（容量、内阻、温度等）
+- `cycles`: 详细时间序列数据（电压、电流、温度等）
+
+## 🧠 特征工程 (Feature Engineering)
+
+### 标准特征 (9维)
+1. **DeltaQ_var**: Q100-Q10差异的对数方差
+2. **DeltaQ_min**: Q100-Q10差异的对数最小值
+3. **CapFadeCycle2Slope/Intercept**: 容量衰减线性拟合
+4. **Qd2**: 第2次循环放电容量
+5. **AvgChargeTime**: 前5次循环平均充电时间
+6. **IntegralTemp**: 2-100次循环温度积分
+7. **MinIR**: 最小内阻
+8. **IRDiff2And100**: 第2次与第100次循环内阻差
+
+### 扩展特征 (12维)
+在标准特征基础上增加:
+- **DeltaQc_var**: 充电容量差异方差
+- **DeltaQc_min**: 充电容量差异最小值
+- **ChargingPolicy**: 充电策略编码
+
+### CNN图形特征
+将时间序列转换为3通道图像:
+- **通道1**: Q(V)曲线（容量-电压关系）
+- **通道2**: dQ/dV曲线（增量容量）
+- **通道3**: ΔQ曲线（相对容量差）
+- **尺寸**: 224×224像素，适配AlexNet输入
+
+## 🤖 模型实现 (Models)
+
+### 传统机器学习模型
+
+| 模型 | 特点 | 适用场景 |
+|------|------|----------|
+| ElasticNet | L1+L2正则化，特征选择 | 高维稀疏数据 |
+| XGBoost | 梯度提升，自动特征重要性 | 复杂非线性关系 |
+| Random Forest | 随机特征选择，抗过拟合 | 稳健性要求高 |
+| Extra Trees | 极端随机化，训练快速 | 快速原型开发 |
+
+### 深度学习模型
+
+**CNN-图像识别**:
+- **骨干网络**: 预训练AlexNet (ImageNet)
+- **微调策略**: 冻结早期层，训练分类器和后期卷积层
+- **目标归一化**: Min-Max缩放至[0,1]
+- **早停机制**: Patience-based防止过拟合
+
+## ⚙️ 配置选项 (Configuration)
+
+### 数据分割策略
+```python
+# config.py中的配置
+Config:
+  test_size: float = 0.2        # 测试集比例
+  val_size: float = 0.2         # 验证集比例
+  random_split: bool = False    # False=按批次分割
+  outlier_threshold: int = 3    # 3σ异常值剔除
+```
+
+### 模型超参数
+每个模型都有独立的配置类，支持:
+- 网格搜索参数范围
+- 交叉验证折数
+- 早停patience
+- 学习率和正则化参数
+
+## 📈 评估指标 (Metrics)
+
+- **MSE**: 均方误差 (MSE = 1/n Σ(yi - ŷi)²)
+- **RMSE**: 均方根误差 (RMSE = √MSE)
+- **MPE**: 平均百分比误差 (MPE = 100%/n Σ(yi - ŷi)/yi)
+- **R²**: 决定系数 (R² = 1 - SSE/SST)
+
+注意: CNN模型的预测结果需要反归一化到原始尺度进行评估。
+
+## 🔧 自定义扩展 (Customization)
+
+### 添加新模型
+1. 继承`models/base.py`中的`BaseModel`类
+2. 实现`fit()`、`predict()`、`evaluate()`方法
+3. 在`config.py`中添加配置类
+4. 在`main.py`中注册新模型
+
+### 自定义特征
+1. 在`feature_extraction/`目录下创建新模块
+2. 实现`extract_features(data_dict, cycles)`接口
+3. 在配置中指定特征类型
+
+## 📝 实验结果 (Experimental Results)
+
+运行后的结果保存在`results/`目录下，格式如下:
+```
+results/YYYY-MM-DD_HH-MM-SS/
+├── results.json           # 详细结果数据
+├── prediction_plot.png    # 预测vs实际散点图
+├── feature_importance.png # 特征重要性排序
+└── config.json           # 实验配置参数
+```
+## 📚 参考文献 (References)
+
+1. **Severson, K. A., et al.** (2019). Data-driven prediction of battery cycle life before capacity degradation. *Nature Energy*, 4(5), 383-391.
+
+2. **Attia, P. M., et al.** (2020). Closed-loop optimization of fast-charging protocols for batteries with machine learning. *Nature*, 578(7795), 395-399.
